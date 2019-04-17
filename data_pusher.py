@@ -7,7 +7,6 @@ import os
 import json
 import gzip
 from datetime import datetime, timedelta
-import logging
 
 from db_adapter.source import get_source_id, add_source
 from db_adapter.variable import get_variable_id, add_variable
@@ -16,6 +15,8 @@ from db_adapter.station import StationEnum, get_station_id, add_station
 from db_adapter.base import get_engine, get_sessionmaker, base
 from db_adapter.constants import DRIVER_PYMYSQL, DIALECT_MYSQL
 from db_adapter.timeseries import Timeseries
+
+from logger import logger
 
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
@@ -26,26 +27,46 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 def push_rainfall_to_db(session, timeseries,
                         source_id, variable_id, unit_id, station_id, tms_meta,
                         fgt, upsert=False):
+
+    """
+
+    :param session:
+    :param timeseries: list of [time, value] lists
+    :param source_id:
+    :param variable_id:
+    :param unit_id:
+    :param station_id:
+    :param tms_meta: metadata to generate hash
+    :param fgt:
+    :param upsert:
+    :return:
+    """
+
+    logger.info("########## Push rainfall timeseries to the database ##########")
+
     ts = Timeseries(session)
 
+    logger.info("Checking whether the tms_id for given meta data exists. {}".format(tms_meta))
     tms_id = ts.get_timeseries_id(tms_meta)
-    print('######################### Timeseries id : ', tms_id)
+    logger.info("Existing timeseries id : {}".format(tms_id))
+
     if tms_id is None:
         tms_id = ts.generate_timeseries_id(tms_meta)
-        print('HASH SHA256 created: ' + tms_id)
+        logger.info('HASH SHA256 created: {}'.format(tms_id))
 
         try:
             return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=fgt,
                     sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
                     station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id)
         except Exception:
+            logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
             traceback.print_exc()
             return False
         finally:
             session.close()
     else:
-        print("Timseries id already exists in the database : ", tms_id)
-        print("For the meta data : ", tms_meta)
+        logger.info("Timseries id already exists in the database : {}".format(tms_id))
+        logger.info("For the meta data : {}".format(tms_meta))
 
 
 def get_two_element_average(prcp, return_diff=True):
@@ -80,8 +101,10 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
     """
 
     if not os.path.exists(rainc_net_cdf_file_path):
+        logger.warning('no rainc netcdf')
         print('no rainc netcdf')
     elif not os.path.exists(rainnc_net_cdf_file_path):
+        logger.warning('no rainnc netcdf')
         print('no rainnc netcdf')
     else:
 
@@ -144,6 +167,7 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
                 station_id = get_station_id(session=session, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
                 if station_id is None:
+                    logger.info("Adding station {} to the station table in the database".format(station_prefix))
                     add_station(session=session, name=station_prefix, latitude=lat, longitude=lon,
                             description="WRF point",
                             station_type=StationEnum.WRF)
@@ -282,39 +306,43 @@ if __name__=="__main__":
         fgt = datetime.strftime(datetime.now(), '%Y-%m-%d 21:30:00')
         scheduled_date = datetime.strftime(datetime.now(), '%Y-%m-%d 6:30:00')
 
-        # for wrf_model in wrf_model_list:
-        #     rainc_net_cdf_file = 'RAINC_{}_{}.nc'.format(run_date_str, wrf_model)
-        #     rainnc_net_cdf_file = 'RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
-        #     rainc_net_cdf_file_path = os.path.join(output_dir, rainc_net_cdf_file)
-        #     rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
-        #     upsert = True
-        #
-        #     sim_tag = 'WRF{}_{}'.format(version, wrf_model)
-        #     source_name = "{}_{}".format(model, wrf_model)
-        #     source_id = get_source_id(session=session, model=source_name, version=version)
-        #
-        #     tms_meta = {
-        #             'sim_tag'       : sim_tag,
-        #             'scheduled_date': scheduled_date,
-        #             'model'         : source_name,
-        #             'version'       : version,
-        #             'variable'      : variable,
-        #             'unit'          : unit,
-        #             'unit_type'     : unit_type.value
-        #             }
-        #
-        #     try:
-        #         read_netcdf_file(session=session,
-        #                 rainc_net_cdf_file_path=rainc_net_cdf_file_path,
-        #                 rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-        #                 source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta,
-        #                 fgt=fgt, upsert=upsert)
-        #     except Exception as e:
-        #         print('Net CDF file reading error.')
-        #         traceback.print_exc()
+        for wrf_model in wrf_model_list:
+            rainc_net_cdf_file = 'RAINC_{}_{}.nc'.format(run_date_str, wrf_model)
+            rainnc_net_cdf_file = 'RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+
+            rainc_net_cdf_file_path = os.path.join(output_dir, rainc_net_cdf_file)
+            logger.info("rainc_net_cdf_file_path : {}".format(rainc_net_cdf_file_path))
+
+            rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
+            logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+
+            sim_tag = 'WRF{}_{}'.format(version, wrf_model)
+            source_name = "{}_{}".format(model, wrf_model)
+            source_id = get_source_id(session=session, model=source_name, version=version)
+
+            tms_meta = {
+                    'sim_tag'       : sim_tag,
+                    'scheduled_date': scheduled_date,
+                    'model'         : source_name,
+                    'version'       : version,
+                    'variable'      : variable,
+                    'unit'          : unit,
+                    'unit_type'     : unit_type.value
+                    }
+
+            try:
+                read_netcdf_file(session=session,
+                        rainc_net_cdf_file_path=rainc_net_cdf_file_path, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
+                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
+            except Exception as e:
+                logger.error("Net CDF file reading error.")
+                print('Net CDF file reading error.')
+                traceback.print_exc()
 
     except Exception as e:
+        logger.error('JSON config data loading error.')
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
+        logger.info("Process finished.")
         print("Process finished.")
