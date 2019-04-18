@@ -5,7 +5,6 @@ from netCDF4 import Dataset
 import numpy as np
 import os
 import json
-import gzip
 from datetime import datetime, timedelta
 
 from db_adapter.source import get_source_id, add_source
@@ -21,12 +20,9 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
-# [lon_min, lat_min, lon_max, lat_max] : [79.5214614868164, 5.722969055175781, 82.1899185180664, 10.064254760742188]
-
-
 def push_rainfall_to_db(session, timeseries,
                         source_id, variable_id, unit_id, station_id, tms_meta,
-                        fgt, upsert=False):
+                        fgt):
 
     """
 
@@ -38,7 +34,6 @@ def push_rainfall_to_db(session, timeseries,
     :param station_id:
     :param tms_meta: metadata to generate hash
     :param fgt:
-    :param upsert:
     :return:
     """
 
@@ -82,22 +77,23 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 
 def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
-                     source_id, variable_id, unit_id, tms_meta,
-                     fgt, upsert=False):
+                     source_id, variable_id, unit_id, tms_meta, fgt):
+
     """
 
     :param session:
     :param rainc_net_cdf_file_path:
     :param rainnc_net_cdf_file_path:
-    :param station_prefix:
-    :param run_name:
-    :param upsert:
+    :param source_id:
+    :param variable_id:
+    :param unit_id:
+    :param tms_meta:
+    :param fgt:
     :return:
 
     rainc_unit_info:  mm
     lat_unit_info:  degree_north
     time_unit_info:  minutes since 2019-04-02T18:00:00
-
     """
 
     if not os.path.exists(rainc_net_cdf_file_path):
@@ -181,7 +177,6 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                             minutes=times[i].item())
                     t = datetime_utc_to_lk(ts_time, shift_mins=0)
                     ts.append([t.strftime('%Y-%m-%d %H:%M:%S'), diff[i, y, x]])
-
 
                 push_rainfall_to_db(session=session, timeseries=ts,
                             source_id=source_id, variable_id=variable_id, unit_id=unit_id, station_id=station_id,
