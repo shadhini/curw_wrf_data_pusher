@@ -293,6 +293,9 @@ if __name__=="__main__":
 
         engine = get_engine(dialect=DIALECT_MYSQL, driver=DRIVER_PYMYSQL, host=config['host'], user=config['user'],
                 password=config['password'], db=config['db'], port=config['port'])
+        logger.info("Connecting to database : dialect={}, driver={}, host={}, user={}, password={}, db={}, port={}"
+            .format(DIALECT_MYSQL, DRIVER_PYMYSQL, config['host'], config['user'], config['password'],
+                config['db'], config['port']))
 
         Session = get_sessionmaker(engine=engine)
 
