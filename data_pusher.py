@@ -1,6 +1,4 @@
-import shutil
 import traceback
-from random import random
 from netCDF4 import Dataset
 import numpy as np
 import os
@@ -21,9 +19,7 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
 def push_rainfall_to_db(session, timeseries,
-                        source_id, variable_id, unit_id, station_id, tms_meta,
-                        fgt):
-
+                        source_id, variable_id, unit_id, station_id, tms_meta, fgt, start_date, end_date):
     """
 
     :param session:
@@ -34,16 +30,17 @@ def push_rainfall_to_db(session, timeseries,
     :param station_id:
     :param tms_meta: metadata to generate hash
     :param fgt:
+    :param start_date:
+    :param end_date:
     :return:
     """
 
-    logger.info("########## Push rainfall timeseries to the database ##########")
+    logger.info("########## Push timeseries to the database ##########")
 
     ts = Timeseries(session)
 
-    logger.info("Checking whether the tms_id for given meta data exists. {}".format(tms_meta))
     tms_id = ts.get_timeseries_id(tms_meta)
-    logger.info("Existing timeseries id : {}".format(tms_id))
+    logger.info("Existing timeseries id for given tms meta data: {}".format(tms_id))
 
     if tms_id is None:
         tms_id = ts.generate_timeseries_id(tms_meta)
@@ -52,7 +49,8 @@ def push_rainfall_to_db(session, timeseries,
         try:
             return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=fgt,
                     sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
-                    station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id)
+                    station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
+                    start_date=start_date, end_date=end_date)
         except Exception:
             logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
             traceback.print_exc()
@@ -78,7 +76,6 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                      source_id, variable_id, unit_id, tms_meta, fgt):
-
     """
 
     :param session:
@@ -108,10 +105,7 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
         RAINC netcdf data extraction
         """
         nc_fid = Dataset(rainc_net_cdf_file_path, mode='r')
-        # nc_fid = Dataset("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINC_2019-04-03_A.nc", mode='r')
 
-        # rainc_unit_info = nc_fid.variables['RAINC'].units
-        # lat_unit_info = nc_fid.variables['XLAT'].units
         time_unit_info = nc_fid.variables['XTIME'].units
 
         time_unit_info_list = time_unit_info.split(' ')
@@ -135,11 +129,16 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
         """
         nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
 
-        # nnc_fid = Dataset("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINNC_2019-04-03_A.nc", mode='r')
-
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
         times = nc_fid.variables['XTIME'][:]
+
+        ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
+        ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                            minutes=float(max(times)))
+
+        start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
 
         prcp = rainc + rainnc
 
@@ -170,7 +169,7 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                     station_id = get_station_id(session=session, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
-                # add rf series to the dict
+                # generate timeseries for each station
                 ts = []
                 for i in range(len(diff)):
                     ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
@@ -179,15 +178,15 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                     ts.append([t.strftime('%Y-%m-%d %H:%M:%S'), diff[i, y, x]])
 
                 push_rainfall_to_db(session=session, timeseries=ts,
-                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, station_id=station_id,
-                            tms_meta=tms_meta, fgt=fgt, upsert=False)
+                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, station_id=station_id,
+                        tms_meta=tms_meta, fgt=fgt, start_date=start_date, end_date=end_date)
 
 
 def init(session, model, wrf_model_list, version, variable, unit, unit_type):
     for _wrf_model in wrf_model_list:
         source_name = "{}_{}".format(model, _wrf_model)
         if get_source_id(session=session, model=source_name, version=version) is None:
-            add_source(session=session, model=source_name, version=version, parameters={})
+            add_source(session=session, model=source_name, version=version)
 
     if get_variable_id(session=session, variable=variable) is None:
         add_variable(session=session, variable=variable)
@@ -201,25 +200,25 @@ if __name__=="__main__":
     """
     Config.json 
     {
-          "wrf_dir": "/mnt/disks/wrf-mod",
-          "model": "WRF",
-          "version": "3",
-          "wrf_model_list": "A,C,E,SE",
-        
-          "start_date": "2019-03-24",
-        
-          "host": "104.198.0.87",
-          "user": "root",
-          "password": "cfcwm07",
-          "db": "curw",
-          "port": 3306,
-        
-          "unit": "mm",
-          "unit_type": "Accumulative",
-          
-          "variable": "Precipitation"
+      "wrf_dir": "/mnt/disks/wrf-mod",
+      "model": "WRF",
+      "version": "v3",
+      "wrf_model_list": "A,C,E,SE",
+
+      "start_date": "2019-03-24",
+
+      "host": "127.0.0.1",
+      "user": "root",
+      "password": "password",
+      "db": "curw_fcst",
+      "port": 3306,
+
+      "unit": "mm",
+      "unit_type": "Accumulative",
+
+      "variable": "Precipitation"
     }
-    
+
     run_date_str :  2019-03-23
     daily_dir :  STATIONS_2019-03-23
     output_dir :  /mnt/disks/wrf-mod/STATIONS_2019-03-23
@@ -228,7 +227,7 @@ if __name__=="__main__":
     rainnc_net_cdf_file :  RAINNC_2019-03-23_A.nc
     rainc_net_cdf_file_path :  /mnt/disks/wrf-mod/STATIONS_2019-03-23/RAINC_2019-03-23_A.nc
     rainnc_net_cdf_file_path :  /mnt/disks/wrf-mod/STATIONS_2019-03-23/RAINNC_2019-03-23_A.nc    
-    
+
     tms_meta = {
                     'sim_tag'       : sim_tag,
                     'scheduled_date': scheduled_date,
@@ -279,9 +278,14 @@ if __name__=="__main__":
             variable = config['variable']
 
         if start_date:
-            run_date_str = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+            run_date_str = start_date
+            fgt = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d 21:30:00')
+            scheduled_date = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=1))\
+                .strftime('%Y-%m-%d 06:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            fgt = datetime.strftime(datetime.now(), '%Y-%m-%d 21:30:00')
+            scheduled_date = datetime.strftime(datetime.now(), '%Y-%m-%d 06:45:00')
 
         daily_dir = 'STATIONS_{}'.format(run_date_str)
 
@@ -298,8 +302,6 @@ if __name__=="__main__":
 
         variable_id = get_variable_id(session=session, variable=variable)
         unit_id = get_unit_id(session=session, unit=unit, unit_type=unit_type)
-        fgt = datetime.strftime(datetime.now(), '%Y-%m-%d 21:30:00')
-        scheduled_date = datetime.strftime(datetime.now(), '%Y-%m-%d 6:30:00')
 
         for wrf_model in wrf_model_list:
             rainc_net_cdf_file = 'RAINC_{}_{}.nc'.format(run_date_str, wrf_model)
@@ -327,7 +329,8 @@ if __name__=="__main__":
 
             try:
                 read_netcdf_file(session=session,
-                        rainc_net_cdf_file_path=rainc_net_cdf_file_path, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
+                        rainc_net_cdf_file_path=rainc_net_cdf_file_path,
+                        rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
             except Exception as e:
                 logger.error("Net CDF file reading error.")

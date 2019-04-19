@@ -8,4 +8,3 @@ with open('logger_config.yaml', 'r') as f:
     logging.config.dictConfig(config)
 
 logger = logging.getLogger(__name__)
-

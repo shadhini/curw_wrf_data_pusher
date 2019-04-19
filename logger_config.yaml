@@ -26,4 +26,4 @@ handlers:
 #    propagate: no
 root:
   level: INFO
-  handlers: [h, fh]
+  handlers: [fh]
