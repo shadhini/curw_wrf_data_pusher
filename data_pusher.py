@@ -277,6 +277,12 @@ if __name__=="__main__":
         if 'variable' in config:
             variable = config['variable']
 
+        logger.info("Read config.json :  wrf_dir={}, model={}, version={}, wrf_model_list={}, start_date={}, host={}, "
+                    "user={}, password={}, db={}, port={}, unit={}, unit_type={}, variable={}"
+                .format(config["wrf_dir"], config["model"], config["version"], wrf_model_list, config["start_date"],
+                config["host"], config["user"], config["password"], config["db"], config["port"],
+                config["unit"], config["unit_type"], config["variable"]))
+
         if start_date:
             run_date_str = start_date
             fgt = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d 21:30:00')
