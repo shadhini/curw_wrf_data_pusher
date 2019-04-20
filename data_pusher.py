@@ -152,8 +152,8 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
         for y in range(height):
             for x in range(width):
-                lat = round(float(lats[y]), 10)
-                lon = round(float(lons[x]), 10)
+                lat = float(lats[y])
+                lon = float(lons[x])
 
                 tms_meta['latitude'] = str(lat)
                 tms_meta['longitude'] = str(lon)
