@@ -243,45 +243,89 @@ if __name__=="__main__":
     try:
         config = json.loads(open('config.json').read())
 
-        wrf_dir = ''
-        model = ''
-        version = ''
-        wrf_model_list = ''
-
-        start_date = ''
-
-        unit = ''
-        unit_type = ''
-
-        variable = ''
-
-        if 'wrf_dir' in config:
+        # source details
+        if 'wrf_dir' in config and (config['wrf_dir'] != ""):
             wrf_dir = config['wrf_dir']
+        else:
+            logger.error("wrf_dir not specified in config file.")
+            exit(1)
 
-        if 'model' in config:
+        if 'model' in config and (config['model'] != ""):
             model = config['model']
-        if 'version' in config['version']:
+        else:
+            logger.error("model not specified in config file.")
+            exit(1)
+
+        if 'version' in config and (config['version'] != ""):
             version = config['version']
-        if 'wrf_model_list' in config:
+        else:
+            logger.error("version not specified in config file.")
+            exit(1)
+
+        if 'wrf_model_list' in config and (config['wrf_model_list'] != ""):
             wrf_model_list = config['wrf_model_list']
-        wrf_model_list = wrf_model_list.split(',')
+            wrf_model_list = wrf_model_list.split(',')
+        else:
+            logger.error("wrf_model_list not specified in config file.")
+            exit(1)
 
-        if 'start_date' in config:
+        # run date details
+        if 'start_date' in config and (config['start_date'] != ""):
             start_date = config['start_date']
+        else:
+            logger.error("start_date not specified in config file.")
+            exit(1)
 
-        if 'unit' in config:
+        # unit details
+        if 'unit' in config and (config['unit'] != ""):
             unit = config['unit']
-        if 'unit_type' in config:
+        else:
+            logger.error("unit not specified in config file.")
+            exit(1)
+
+        if 'unit_type' in config and (config['unit_type'] != ""):
             unit_type = UnitType.getType(config['unit_type'])
+        else:
+            logger.error("unit_type not specified in config file.")
+            exit(1)
 
-        if 'variable' in config:
+        # variable details
+        if 'variable' in config and (config['variable'] != ""):
             variable = config['variable']
+        else:
+            logger.error("variable not specified in config file.")
+            exit(1)
 
-        logger.info("Read config.json :  wrf_dir={}, model={}, version={}, wrf_model_list={}, start_date={}, host={}, "
-                    "user={}, password={}, db={}, port={}, unit={}, unit_type={}, variable={}"
-                .format(config["wrf_dir"], config["model"], config["version"], wrf_model_list, config["start_date"],
-                config["host"], config["user"], config["password"], config["db"], config["port"],
-                config["unit"], config["unit_type"], config["variable"]))
+        # connection params
+        if 'host' in config and (config['host'] != ""):
+            host = config['host']
+        else:
+            logger.error("host not specified in config file.")
+            exit(1)
+
+        if 'user' in config and (config['user'] != ""):
+            user = config['user']
+        else:
+            logger.error("user not specified in config file.")
+            exit(1)
+
+        if 'password' in config and (config['password'] != ""):
+            password = config['password']
+        else:
+            logger.error("password not specified in config file.")
+            exit(1)
+
+        if 'db' in config and (config['db'] != ""):
+            db = config['db']
+        else:
+            logger.error("db not specified in config file.")
+            exit(1)
+
+        if 'port' in config and (config['port'] != ""):
+            port = config['port']
+        else:
+            logger.error("port not specified in config file.")
+            exit(1)
 
         if start_date:
             run_date_str = start_date
@@ -297,11 +341,10 @@ if __name__=="__main__":
 
         output_dir = os.path.join(wrf_dir, daily_dir)
 
-        engine = get_engine(dialect=DIALECT_MYSQL, driver=DRIVER_PYMYSQL, host=config['host'], user=config['user'],
-                password=config['password'], db=config['db'], port=config['port'])
+        engine = get_engine(dialect=DIALECT_MYSQL, driver=DRIVER_PYMYSQL, host=host, user=user,
+                password=password, db=db, port=port)
         logger.info("Connecting to database : dialect={}, driver={}, host={}, user={}, password={}, db={}, port={}"
-            .format(DIALECT_MYSQL, DRIVER_PYMYSQL, config['host'], config['user'], config['password'],
-                config['db'], config['port']))
+            .format(DIALECT_MYSQL, DRIVER_PYMYSQL, host, user, password, db, port))
 
         Session = get_sessionmaker(engine=engine)
 
