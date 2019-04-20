@@ -5,13 +5,13 @@ import os
 import json
 from datetime import datetime, timedelta
 
-from db_adapter.source import get_source_id, add_source
-from db_adapter.variable import get_variable_id, add_variable
-from db_adapter.unit import get_unit_id, add_unit, UnitType
-from db_adapter.station import StationEnum, get_station_id, add_station
+from db_adapter.curw_fcst.source import get_source_id, add_source
+from db_adapter.curw_fcst.variable import get_variable_id, add_variable
+from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
+from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station
 from db_adapter.base import get_engine, get_sessionmaker, base
 from db_adapter.constants import DRIVER_PYMYSQL, DIALECT_MYSQL
-from db_adapter.timeseries import Timeseries
+from db_adapter.curw_fcst.timeseries import Timeseries
 
 from logger import logger
 
@@ -186,7 +186,7 @@ def init(session, model, wrf_model_list, version, variable, unit, unit_type):
     for _wrf_model in wrf_model_list:
         source_name = "{}_{}".format(model, _wrf_model)
         if get_source_id(session=session, model=source_name, version=version) is None:
-            add_source(session=session, model=source_name, version=version)
+            add_source(session=session, model=source_name, version=version, parameters=None)
 
     if get_variable_id(session=session, variable=variable) is None:
         add_variable(session=session, variable=variable)
@@ -244,9 +244,9 @@ if __name__=="__main__":
         config = json.loads(open('config.json').read())
 
         wrf_dir = ''
-        model = 'WRF'
-        version = 'v3'
-        wrf_model_list = 'A,C,E,SE'
+        model = ''
+        version = ''
+        wrf_model_list = ''
 
         start_date = ''
 
