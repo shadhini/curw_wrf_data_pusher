@@ -269,13 +269,6 @@ if __name__=="__main__":
             logger.error("wrf_model_list not specified in config file.")
             exit(1)
 
-        # run date details
-        if 'start_date' in config and (config['start_date'] != ""):
-            start_date = config['start_date']
-        else:
-            logger.error("start_date not specified in config file.")
-            exit(1)
-
         # unit details
         if 'unit' in config and (config['unit'] != ""):
             unit = config['unit']
@@ -327,10 +320,10 @@ if __name__=="__main__":
             logger.error("port not specified in config file.")
             exit(1)
 
-        if start_date:
-            run_date_str = start_date
-            fgt = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d 21:30:00')
-            scheduled_date = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=1))\
+        if 'start_date' in config and (config['start_date'] != ""):
+            run_date_str = config['start_date']
+            fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d 21:30:00')
+            scheduled_date = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1))\
                 .strftime('%Y-%m-%d 06:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
