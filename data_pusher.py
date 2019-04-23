@@ -380,8 +380,7 @@ if __name__=="__main__":
 
         try:
             ts = Timeseries(session)
-            fgt = datetime_utc_to_lk(datetime.strptime(datetime.now(), '%Y-%m-%dT%H:%M:%S'), shift_mins=0)\
-                .strftime('%Y-%m-%d %H:%M:%S')
+            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
             ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
         except Exception as e:
             logger.error('Exception occurred while updating fgt')
