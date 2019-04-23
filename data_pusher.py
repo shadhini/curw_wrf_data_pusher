@@ -19,7 +19,7 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
 def push_rainfall_to_db(session, timeseries,
-                        source_id, variable_id, unit_id, station_id, tms_meta, fgt, start_date, end_date):
+                        source_id, variable_id, unit_id, station_id, tms_meta, start_date, end_date):
     """
 
     :param session:
@@ -29,7 +29,6 @@ def push_rainfall_to_db(session, timeseries,
     :param unit_id:
     :param station_id:
     :param tms_meta: metadata to generate hash
-    :param fgt:
     :param start_date:
     :param end_date:
     :return:
@@ -39,7 +38,7 @@ def push_rainfall_to_db(session, timeseries,
 
     ts = Timeseries(session)
 
-    tms_id = ts.get_timeseries_id(tms_meta)
+    tms_id = ts.get_timeseries_id_if_exists(tms_meta)
     logger.info("Existing timeseries id for given tms meta data: {}".format(tms_id))
 
     if tms_id is None:
@@ -47,7 +46,7 @@ def push_rainfall_to_db(session, timeseries,
         logger.info('HASH SHA256 created: {}'.format(tms_id))
 
         try:
-            return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=fgt,
+            return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
                     sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
                     station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
                     start_date=start_date, end_date=end_date)
@@ -75,7 +74,7 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 
 def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
-                     source_id, variable_id, unit_id, tms_meta, fgt):
+                     source_id, variable_id, unit_id, tms_meta):
     """
 
     :param session:
@@ -85,7 +84,6 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
     :param variable_id:
     :param unit_id:
     :param tms_meta:
-    :param fgt:
     :return:
 
     rainc_unit_info:  mm
@@ -179,7 +177,7 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
                 push_rainfall_to_db(session=session, timeseries=ts,
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, station_id=station_id,
-                        tms_meta=tms_meta, fgt=fgt, start_date=start_date, end_date=end_date)
+                        tms_meta=tms_meta, start_date=start_date, end_date=end_date)
 
 
 def init(session, model, wrf_model_list, version, variable, unit, unit_type):
