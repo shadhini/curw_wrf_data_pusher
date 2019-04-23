@@ -354,7 +354,7 @@ if __name__=="__main__":
             rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
             logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
 
-            sim_tag = 'WRF{}_{}'.format(version, wrf_model)
+            sim_tag = 'evening_18hrs'
             source_name = "{}_{}".format(model, wrf_model)
             source_id = get_source_id(session=session, model=source_name, version=version)
 
