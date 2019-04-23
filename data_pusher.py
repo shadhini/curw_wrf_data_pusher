@@ -322,12 +322,10 @@ if __name__=="__main__":
 
         if 'start_date' in config and (config['start_date'] != ""):
             run_date_str = config['start_date']
-            fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d 21:30:00')
             scheduled_date = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1))\
                 .strftime('%Y-%m-%d 06:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            fgt = datetime.strftime(datetime.now(), '%Y-%m-%d 21:30:00')
             scheduled_date = datetime.strftime(datetime.now(), '%Y-%m-%d 06:45:00')
 
         daily_dir = 'STATIONS_{}'.format(run_date_str)
@@ -376,11 +374,19 @@ if __name__=="__main__":
                 read_netcdf_file(session=session,
                         rainc_net_cdf_file_path=rainc_net_cdf_file_path,
                         rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
+                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
             except Exception as e:
                 logger.error("Net CDF file reading error.")
                 print('Net CDF file reading error.')
                 traceback.print_exc()
+
+        try:
+            ts = Timeseries(session)
+            ts.update_fgt(scheduled_date=scheduled_date, fgt=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        except Exception as e:
+            logger.error('Exception occurred while updating fgt')
+            print('Exception occurred while updating fgt')
+            traceback.print_exc()
 
     except Exception as e:
         logger.error('JSON config data loading error.')
