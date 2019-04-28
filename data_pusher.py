@@ -18,47 +18,27 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
-def push_rainfall_to_db(session, timeseries,
-                        source_id, variable_id, unit_id, station_id, tms_meta, start_date, end_date):
+def push_rainfall_to_db(session, engine, ts_data, ts_run):
     """
 
     :param session:
-    :param timeseries: list of [time, value] lists
-    :param source_id:
-    :param variable_id:
-    :param unit_id:
-    :param station_id:
-    :param tms_meta: metadata to generate hash
-    :param start_date:
-    :param end_date:
+    :param engine:
+    :param ts_data: timeseries
+    :param ts_run: run entry
     :return:
     """
 
-    logger.info("########## Push timeseries to the database ##########")
-
-    ts = Timeseries(session)
-
-    tms_id = ts.get_timeseries_id_if_exists(tms_meta)
-    logger.info("Existing timeseries id for given tms meta data: {}".format(tms_id))
-
-    if tms_id is None:
-        tms_id = ts.generate_timeseries_id(tms_meta)
-        logger.info('HASH SHA256 created: {}'.format(tms_id))
-
-        try:
-            return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
-                    sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
-                    station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
-                    start_date=start_date, end_date=end_date)
-        except Exception:
-            logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
-            traceback.print_exc()
-            return False
-        finally:
-            session.close()
-    else:
-        logger.info("Timseries id already exists in the database : {}".format(tms_id))
-        logger.info("For the meta data : {}".format(tms_meta))
+    try:
+        return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
+                sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
+                station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
+                start_date=start_date, end_date=end_date)
+    except Exception:
+        logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
+        traceback.print_exc()
+        return False
+    finally:
+        session.close()
 
 
 def get_two_element_average(prcp, return_diff=True):
@@ -73,11 +53,14 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
+def read_netcdf_file(session, engine, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                      source_id, variable_id, unit_id, tms_meta):
+
+
     """
 
     :param session:
+    :param engine:
     :param rainc_net_cdf_file_path:
     :param rainnc_net_cdf_file_path:
     :param source_id:
@@ -150,6 +133,7 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
         for y in range(height):
             for x in range(width):
+
                 lat = float(lats[y])
                 lon = float(lons[x])
 
@@ -167,17 +151,37 @@ def read_netcdf_file(session, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                     station_id = get_station_id(session=session, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
-                # generate timeseries for each station
-                ts = []
-                for i in range(len(diff)):
-                    ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                            minutes=times[i].item())
-                    t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                    ts.append([t.strftime('%Y-%m-%d %H:%M:%S'), diff[i, y, x]])
+                ts = Timeseries(session)
 
-                push_rainfall_to_db(session=session, timeseries=ts,
-                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, station_id=station_id,
-                        tms_meta=tms_meta, start_date=start_date, end_date=end_date)
+                tms_id = ts.get_timeseries_id_if_exists(tms_meta)
+                logger.info("Existing timeseries id: {}".format(tms_id))
+
+                if tms_id is None:
+                    tms_id = ts.generate_timeseries_id(tms_meta)
+                    logger.info('HASH SHA256 created: {}'.format(tms_id))
+
+                    run = { 'id'      : tms_id, 'sim_tag': tms_meta['sim_tag'], 'start_date': start_date,
+                            'end_date': end_date, 'station': station_id, 'source': source_id, 'variable': variable_id,
+                            'unit'    : unit_id, 'fgt': None, 'scheduled_date': tms_meta["scheduled_date"]
+                            }
+
+                    data_list = []
+                    # generate timeseries for each station
+                    for i in range(len(diff)):
+                        data = {}
+                        ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                                minutes=times[i].item())
+                        t = datetime_utc_to_lk(ts_time, shift_mins=0)
+                        data['id'] = tms_id
+                        data['time'] = t.strftime('%Y-%m-%d %H:%M:%S')
+                        data['value'] = diff[i, y, x]
+                        data_list.append(data)
+
+                else:
+                    logger.info("Timseries id already exists in the database : {}".format(tms_id))
+                    logger.info("For the meta data : {}".format(tms_meta))
+
+                push_rainfall_to_db(session=session, engine=engine, ts_data=data_list, ts_run=run)
 
 
 def init(session, model, wrf_model_list, version, variable, unit, unit_type):
