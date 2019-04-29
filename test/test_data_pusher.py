@@ -19,7 +19,7 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
-def push_rainfall_to_db(session, engine, ts_data, ts_run):
+def push_rainfall_to_db(engine, session, ts_data, ts_run):
     """
 
     :param session:
@@ -29,13 +29,12 @@ def push_rainfall_to_db(session, engine, ts_data, ts_run):
     :return:
     """
 
+    ts = Timeseries(engine=engine, session=session)
+
     try:
-        return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
-                sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
-                station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
-                start_date=start_date, end_date=end_date)
+        return ts.insert_timeseries(timeseries=ts_data, run=ts_run)
     except Exception:
-        logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
+        logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(ts_run['id']))
         traceback.print_exc()
         return False
     finally:
@@ -55,8 +54,6 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 
 def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta):
-
-
     """
 
     :param session:
@@ -113,10 +110,11 @@ def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta)
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
         times = nc_fid.variables['XTIME'][:]
+        print("############ length times: ##############", len(times))
 
         ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
         ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                            minutes=float(max(times)))
+                minutes=float(max(times)))
 
         start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
         end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
@@ -151,7 +149,7 @@ def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta)
                     station_id = get_station_id(session=session, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
-                ts = Timeseries(session)
+                ts = Timeseries(session=session, engine=engine)
 
                 tms_id = ts.get_timeseries_id_if_exists(tms_meta)
                 logger.info("Existing timeseries id: {}".format(tms_id))
@@ -160,33 +158,41 @@ def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta)
                     tms_id = ts.generate_timeseries_id(tms_meta)
                     logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = { 'id'      : tms_id, 'sim_tag': tms_meta['sim_tag'], 'start_date': start_date,
-                            'end_date': end_date, 'station': station_id, 'source': source_id, 'variable': variable_id,
-                            'unit'    : unit_id, 'fgt': None, 'scheduled_date': tms_meta["scheduled_date"]
+                    run = {
+                            'id'            : tms_id,
+                            'sim_tag'       : tms_meta['sim_tag'],
+                            'start_date'    : start_date,
+                            'end_date'      : end_date,
+                            'station'       : station_id,
+                            'source'        : source_id,
+                            'variable'      : variable_id,
+                            'unit'          : unit_id,
+                            'fgt'           : None,
+                            'scheduled_date': tms_meta["scheduled_date"]
                             }
 
                     data_list = []
                     # generate timeseries for each station
                     for i in range(len(diff)):
-                        data = {}
+                        data = { }
                         ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                                 minutes=times[i].item())
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
                         data['id'] = tms_id
                         data['time'] = t.strftime('%Y-%m-%d %H:%M:%S')
-                        data['value'] = diff[i, y, x]
+                        data['value'] = float(diff[i, y, x])
                         data_list.append(data)
+
+                    push_rainfall_to_db(engine=engine, session=session, ts_data=data_list, ts_run=run)
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
                     logger.info("For the meta data : {}".format(tms_meta))
 
-                push_rainfall_to_db(session=session, engine=engine, ts_data=data_list, ts_run=run)
-
 
 def init(session, model, version, variable, unit, unit_type):
     if get_source_id(session=session, model=model, version=version) is None:
-        add_source(session=session, model=source_name, version=version, parameters=None)
+        add_source(session=session, model=model, version=version, parameters=None)
 
     if get_variable_id(session=session, variable=variable) is None:
         add_variable(session=session, variable=variable)
@@ -291,14 +297,15 @@ if __name__=="__main__":
                 }
 
         try:
-            read_netcdf_file(session=session, source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
+            read_netcdf_file(session=session, engine=engine, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
+                    tms_meta=tms_meta)
         except Exception as e:
             logger.error("Net CDF file reading error.")
             print('Net CDF file reading error.')
             traceback.print_exc()
 
         try:
-            ts = Timeseries(session)
+            ts = Timeseries(session=session, engine=engine)
             fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
             ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
         except Exception as e:
