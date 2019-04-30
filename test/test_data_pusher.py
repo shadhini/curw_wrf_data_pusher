@@ -32,6 +32,13 @@ def push_rainfall_to_db(engine, session, ts_data, ts_run):
     ts = Timeseries(engine=engine, session=session)
 
     try:
+        try:
+            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+            ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
+        except Exception as e:
+            logger.error('Exception occurred while updating fgt')
+            print('Exception occurred while updating fgt')
+            traceback.print_exc()
         return ts.insert_timeseries(timeseries=ts_data, run=ts_run)
     except Exception:
         logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(ts_run['id']))
@@ -302,15 +309,6 @@ if __name__=="__main__":
         except Exception as e:
             logger.error("Net CDF file reading error.")
             print('Net CDF file reading error.')
-            traceback.print_exc()
-
-        try:
-            ts = Timeseries(session=session, engine=engine)
-            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-            ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-        except Exception as e:
-            logger.error('Exception occurred while updating fgt')
-            print('Exception occurred while updating fgt')
             traceback.print_exc()
 
     except Exception as e:

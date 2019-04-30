@@ -5,11 +5,13 @@ import os
 import json
 from datetime import datetime, timedelta
 
+from db_adapter.base import get_engine, get_sessionmaker
+from db_adapter.base import create_db_connection, Pool
+
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station
-from db_adapter.base import get_engine, get_sessionmaker, base
 from db_adapter.constants import DRIVER_PYMYSQL, DIALECT_MYSQL
 from db_adapter.curw_fcst.timeseries import Timeseries
 
@@ -18,21 +20,28 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
-def push_rainfall_to_db(session, engine, ts_data, ts_run):
+def push_rainfall_to_db(pool, ts_data, ts_run):
     """
 
-    :param session:
-    :param engine:
+    :param pool:
     :param ts_data: timeseries
     :param ts_run: run entry
     :return:
     """
+    ts = Timeseries(session)
 
     try:
-        return ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
+         ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
                 sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
                 station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
                 start_date=start_date, end_date=end_date)
+        try:
+            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+            ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
+        except Exception as e:
+            logger.error('Exception occurred while updating fgt')
+            print('Exception occurred while updating fgt')
+            traceback.print_exc()
     except Exception:
         logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
         traceback.print_exc()
@@ -53,7 +62,7 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(session, engine, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
+def read_netcdf_file(session, pool, engine, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                      source_id, variable_id, unit_id, tms_meta):
 
 
@@ -168,20 +177,16 @@ def read_netcdf_file(session, engine, rainc_net_cdf_file_path, rainnc_net_cdf_fi
                     data_list = []
                     # generate timeseries for each station
                     for i in range(len(diff)):
-                        data = {}
                         ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                                 minutes=times[i].item())
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data['id'] = tms_id
-                        data['time'] = t.strftime('%Y-%m-%d %H:%M:%S')
-                        data['value'] = diff[i, y, x]
-                        data_list.append(data)
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), diff[i, y, x]])
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
                     logger.info("For the meta data : {}".format(tms_meta))
 
-                push_rainfall_to_db(session=session, engine=engine, ts_data=data_list, ts_run=run)
+                push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
 
 
 def init(session, model, wrf_model_list, version, variable, unit, unit_type):
@@ -343,7 +348,21 @@ if __name__=="__main__":
 
         session = Session()
 
-        init(session, model, wrf_model_list, version, variable, unit, unit_type)
+        init(session=session, model=model, wrf_model_list=wrf_model_list, version=version, variable=variable,
+                unit=unit, unit_type=unit_type)
+
+        db = create_db_connection(host=host, user=user, password=password, database=db, port=port)
+
+        pool = Pool(create_instance=db)
+
+        # Retrieve db version.
+        conn = pool.get()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT VERSION()")
+            data = cursor.fetchone()
+            logger.info("Database version : %s " % data)
+        if conn is not None:
+            pool.put(conn)
 
         variable_id = get_variable_id(session=session, variable=variable)
         unit_id = get_unit_id(session=session, unit=unit, unit_type=unit_type)
@@ -373,7 +392,7 @@ if __name__=="__main__":
                     }
 
             try:
-                read_netcdf_file(session=session,
+                read_netcdf_file(session=session, pool=pool,
                         rainc_net_cdf_file_path=rainc_net_cdf_file_path,
                         rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
@@ -381,15 +400,6 @@ if __name__=="__main__":
                 logger.error("Net CDF file reading error.")
                 print('Net CDF file reading error.')
                 traceback.print_exc()
-
-        try:
-            ts = Timeseries(session)
-            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-            ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-        except Exception as e:
-            logger.error('Exception occurred while updating fgt')
-            print('Exception occurred while updating fgt')
-            traceback.print_exc()
 
     except Exception as e:
         logger.error('JSON config data loading error.')

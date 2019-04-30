@@ -34,7 +34,7 @@ then
     pip install PyYAML
     echo "Installing datalayer"
 #    pip install git+https://github.com/shadhini/curw_db_adapter.git -U
-    pip install git+https://github.com/shadhini/curw_db_adapter.git@release-2.0
+    pip install git+https://github.com/shadhini/curw_db_adapter.git
 fi
 
 # Push WRFv3 data into the database
