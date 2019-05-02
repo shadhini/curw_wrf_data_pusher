@@ -5,12 +5,13 @@ import os
 import json
 from datetime import datetime, timedelta
 
-from db_adapter.base import get_engine
+from db_adapter.base import get_engine, get_sessionmaker
+from db_adapter.base import get_Pool
+
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station
-from db_adapter.base import get_engine, get_sessionmaker, base
 from db_adapter.constants import DRIVER_PYMYSQL, DIALECT_MYSQL
 from db_adapter.curw_fcst.timeseries import Timeseries
 
@@ -29,9 +30,23 @@ def push_rainfall_to_db(engine, session, ts_data, ts_run):
     :return:
     """
 
-    ts = Timeseries(engine=engine, session=session)
+    def push_rainfall_to_db(pool, ts_data, ts_run):
+        """
 
-    try:
+        :param pool:
+        :param ts_data: timeseries
+        :param ts_run: run entry
+        :return:
+        """
+        ts = Timeseries(pool)
+
+        try:
+            ts.insert_timeseries(timeseries=ts_data, run_tuple=ts_run)
+        except Exception:
+            logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
+            traceback.print_exc()
+            return False
+
         try:
             fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
             ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
@@ -39,13 +54,7 @@ def push_rainfall_to_db(engine, session, ts_data, ts_run):
             logger.error('Exception occurred while updating fgt')
             print('Exception occurred while updating fgt')
             traceback.print_exc()
-        return ts.insert_timeseries(timeseries=ts_data, run=ts_run)
-    except Exception:
-        logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(ts_run['id']))
-        traceback.print_exc()
-        return False
-    finally:
-        session.close()
+            return False
 
 
 def get_two_element_average(prcp, return_diff=True):
@@ -60,7 +69,8 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta):
+
+def read_netcdf_file(session, pool, engine, source_id, variable_id, unit_id, tms_meta):
     """
 
     :param session:
@@ -156,7 +166,7 @@ def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta)
                     station_id = get_station_id(session=session, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
-                ts = Timeseries(session=session, engine=engine)
+                ts = Timeseries(pool)
 
                 tms_id = ts.get_timeseries_id_if_exists(tms_meta)
                 logger.info("Existing timeseries id: {}".format(tms_id))
@@ -165,36 +175,21 @@ def read_netcdf_file(session, engine, source_id, variable_id, unit_id, tms_meta)
                     tms_id = ts.generate_timeseries_id(tms_meta)
                     logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = {
-                            'id'            : tms_id,
-                            'sim_tag'       : tms_meta['sim_tag'],
-                            'start_date'    : start_date,
-                            'end_date'      : end_date,
-                            'station'       : station_id,
-                            'source'        : source_id,
-                            'variable'      : variable_id,
-                            'unit'          : unit_id,
-                            'fgt'           : None,
-                            'scheduled_date': tms_meta["scheduled_date"]
-                            }
-
+                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
+                           unit_id, None, tms_meta["scheduled_date"])
                     data_list = []
                     # generate timeseries for each station
                     for i in range(len(diff)):
-                        data = { }
                         ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                                 minutes=times[i].item())
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data['id'] = tms_id
-                        data['time'] = t.strftime('%Y-%m-%d %H:%M:%S')
-                        data['value'] = float(diff[i, y, x])
-                        data_list.append(data)
-
-                    push_rainfall_to_db(engine=engine, session=session, ts_data=data_list, ts_run=run)
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
                     logger.info("For the meta data : {}".format(tms_meta))
+
+                push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
 
 
 def init(session, model, version, variable, unit, unit_type):
@@ -287,6 +282,17 @@ if __name__=="__main__":
 
         init(session, model, version, variable, unit, unit_type)
 
+        pool = get_Pool(host=HOST, port=PORT, user=USERNAME, password=PASSWORD, db=DATABASE)
+
+        # Retrieve db version.
+        conn = pool.get_conn()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT VERSION()")
+            data = cursor.fetchone()
+            logger.info("Database version : %s " % data)
+        if conn is not None:
+            pool.release(conn)
+
         variable_id = get_variable_id(session=session, variable=variable)
         unit_id = get_unit_id(session=session, unit=unit, unit_type=unit_type)
 
@@ -304,8 +310,7 @@ if __name__=="__main__":
                 }
 
         try:
-            read_netcdf_file(session=session, engine=engine, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
-                    tms_meta=tms_meta)
+            read_netcdf_file(session=session, pool=pool, source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
         except Exception as e:
             logger.error("Net CDF file reading error.")
             print('Net CDF file reading error.')

@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 
 from db_adapter.base import get_engine, get_sessionmaker
-from db_adapter.base import create_db_connection, Pool
+from db_adapter.base import get_Pool
 
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
@@ -28,26 +28,23 @@ def push_rainfall_to_db(pool, ts_data, ts_run):
     :param ts_run: run entry
     :return:
     """
-    ts = Timeseries(session)
+    ts = Timeseries(pool)
 
     try:
-         ts.insert_timeseries(tms_id=tms_id, timeseries=timeseries, fgt=None,
-                sim_tag=tms_meta["sim_tag"], scheduled_date=tms_meta["scheduled_date"],
-                station_id=station_id, source_id=source_id, variable_id=variable_id, unit_id=unit_id,
-                start_date=start_date, end_date=end_date)
-        try:
-            fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-            ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-        except Exception as e:
-            logger.error('Exception occurred while updating fgt')
-            print('Exception occurred while updating fgt')
-            traceback.print_exc()
+        ts.insert_timeseries(timeseries=ts_data, run_tuple=ts_run)
     except Exception:
-        logger.error("Exception occurred while inserting the timseseries for tms_id {}".format(tms_id))
+        logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
         traceback.print_exc()
         return False
-    finally:
-        session.close()
+
+    try:
+        fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
+    except Exception as e:
+        logger.error('Exception occurred while updating fgt')
+        print('Exception occurred while updating fgt')
+        traceback.print_exc()
+        return False
 
 
 def get_two_element_average(prcp, return_diff=True):
@@ -64,8 +61,6 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 def read_netcdf_file(session, pool, engine, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                      source_id, variable_id, unit_id, tms_meta):
-
-
     """
 
     :param session:
@@ -125,7 +120,7 @@ def read_netcdf_file(session, pool, engine, rainc_net_cdf_file_path, rainnc_net_
 
         ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
         ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                            minutes=float(max(times)))
+                minutes=float(max(times)))
 
         start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
         end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
@@ -160,7 +155,7 @@ def read_netcdf_file(session, pool, engine, rainc_net_cdf_file_path, rainnc_net_
                     station_id = get_station_id(session=session, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
-                ts = Timeseries(session)
+                ts = Timeseries(pool)
 
                 tms_id = ts.get_timeseries_id_if_exists(tms_meta)
                 logger.info("Existing timeseries id: {}".format(tms_id))
@@ -169,18 +164,15 @@ def read_netcdf_file(session, pool, engine, rainc_net_cdf_file_path, rainnc_net_
                     tms_id = ts.generate_timeseries_id(tms_meta)
                     logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = { 'id'      : tms_id, 'sim_tag': tms_meta['sim_tag'], 'start_date': start_date,
-                            'end_date': end_date, 'station': station_id, 'source': source_id, 'variable': variable_id,
-                            'unit'    : unit_id, 'fgt': None, 'scheduled_date': tms_meta["scheduled_date"]
-                            }
-
+                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
+                           unit_id, None, tms_meta["scheduled_date"])
                     data_list = []
                     # generate timeseries for each station
                     for i in range(len(diff)):
                         ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                                 minutes=times[i].item())
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), diff[i, y, x]])
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
@@ -251,25 +243,25 @@ if __name__=="__main__":
         config = json.loads(open('config.json').read())
 
         # source details
-        if 'wrf_dir' in config and (config['wrf_dir'] != ""):
+        if 'wrf_dir' in config and (config['wrf_dir']!=""):
             wrf_dir = config['wrf_dir']
         else:
             logger.error("wrf_dir not specified in config file.")
             exit(1)
 
-        if 'model' in config and (config['model'] != ""):
+        if 'model' in config and (config['model']!=""):
             model = config['model']
         else:
             logger.error("model not specified in config file.")
             exit(1)
 
-        if 'version' in config and (config['version'] != ""):
+        if 'version' in config and (config['version']!=""):
             version = config['version']
         else:
             logger.error("version not specified in config file.")
             exit(1)
 
-        if 'wrf_model_list' in config and (config['wrf_model_list'] != ""):
+        if 'wrf_model_list' in config and (config['wrf_model_list']!=""):
             wrf_model_list = config['wrf_model_list']
             wrf_model_list = wrf_model_list.split(',')
         else:
@@ -277,59 +269,59 @@ if __name__=="__main__":
             exit(1)
 
         # unit details
-        if 'unit' in config and (config['unit'] != ""):
+        if 'unit' in config and (config['unit']!=""):
             unit = config['unit']
         else:
             logger.error("unit not specified in config file.")
             exit(1)
 
-        if 'unit_type' in config and (config['unit_type'] != ""):
+        if 'unit_type' in config and (config['unit_type']!=""):
             unit_type = UnitType.getType(config['unit_type'])
         else:
             logger.error("unit_type not specified in config file.")
             exit(1)
 
         # variable details
-        if 'variable' in config and (config['variable'] != ""):
+        if 'variable' in config and (config['variable']!=""):
             variable = config['variable']
         else:
             logger.error("variable not specified in config file.")
             exit(1)
 
         # connection params
-        if 'host' in config and (config['host'] != ""):
+        if 'host' in config and (config['host']!=""):
             host = config['host']
         else:
             logger.error("host not specified in config file.")
             exit(1)
 
-        if 'user' in config and (config['user'] != ""):
+        if 'user' in config and (config['user']!=""):
             user = config['user']
         else:
             logger.error("user not specified in config file.")
             exit(1)
 
-        if 'password' in config and (config['password'] != ""):
+        if 'password' in config and (config['password']!=""):
             password = config['password']
         else:
             logger.error("password not specified in config file.")
             exit(1)
 
-        if 'db' in config and (config['db'] != ""):
+        if 'db' in config and (config['db']!=""):
             db = config['db']
         else:
             logger.error("db not specified in config file.")
             exit(1)
 
-        if 'port' in config and (config['port'] != ""):
+        if 'port' in config and (config['port']!=""):
             port = config['port']
         else:
             logger.error("port not specified in config file.")
             exit(1)
 
-        if 'start_date' in config and (config['start_date'] != ""):
+        if 'start_date' in config and (config['start_date']!=""):
             run_date_str = config['start_date']
-            scheduled_date = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1))\
+            scheduled_date = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
                 .strftime('%Y-%m-%d 06:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -351,18 +343,16 @@ if __name__=="__main__":
         init(session=session, model=model, wrf_model_list=wrf_model_list, version=version, variable=variable,
                 unit=unit, unit_type=unit_type)
 
-        db = create_db_connection(host=host, user=user, password=password, database=db, port=port)
-
-        pool = Pool(create_instance=db)
+        pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
 
         # Retrieve db version.
-        conn = pool.get()
+        conn = pool.get_conn()
         with conn.cursor() as cursor:
             cursor.execute("SELECT VERSION()")
             data = cursor.fetchone()
             logger.info("Database version : %s " % data)
         if conn is not None:
-            pool.put(conn)
+            pool.release(conn)
 
         variable_id = get_variable_id(session=session, variable=variable)
         unit_id = get_unit_id(session=session, unit=unit, unit_type=unit_type)
