@@ -314,5 +314,6 @@ if __name__=="__main__":
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
+        pool.destroy()
         logger.info("Process finished.")
         print("Process finished.")
