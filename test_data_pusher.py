@@ -2,17 +2,14 @@ import traceback
 from netCDF4 import Dataset
 import numpy as np
 import os
-import json
 from datetime import datetime, timedelta
 
-from db_adapter.base import get_engine, get_sessionmaker
 from db_adapter.base import get_Pool
 
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station
-from db_adapter.constants import DRIVER_PYMYSQL, DIALECT_MYSQL
 from db_adapter.curw_fcst.timeseries import Timeseries
 
 from logger import logger
@@ -20,12 +17,10 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 
-
-
 def push_rainfall_to_db(pool, ts_data, ts_run):
     """
 
-    :param pool:
+    :param pool: database connection pool
     :param ts_data: timeseries
     :param ts_run: run entry
     :return:
@@ -61,12 +56,10 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-
-def read_netcdf_file(session, pool, source_id, variable_id, unit_id, tms_meta):
+def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
     """
 
-    :param session:
-    :param engine:
+    :param pool: database connection pool
     :param rainc_net_cdf_file_path:
     :param rainnc_net_cdf_file_path:
     :param source_id:
@@ -149,14 +142,11 @@ def read_netcdf_file(session, pool, source_id, variable_id, unit_id, tms_meta):
 
                 station_prefix = '{}_{}'.format(lat, lon)
 
-                station_id = get_station_id(session=session, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
-                if station_id is None:
-                    logger.info("Adding station {} to the station table in the database".format(station_prefix))
-                    add_station(session=session, name=station_prefix, latitude=lat, longitude=lon,
-                            description="WRF point",
-                            station_type=StationEnum.WRF)
-                    station_id = get_station_id(session=session, latitude=lat, longitude=lon,
-                            station_type=StationEnum.WRF)
+                add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
+                        description="WRF point",
+                        station_type=StationEnum.WRF)
+                station_id = get_station_id(pool=pool, latitude=lat, longitude=lon,
+                        station_type=StationEnum.WRF)
 
                 ts = Timeseries(pool)
 
@@ -177,23 +167,20 @@ def read_netcdf_file(session, pool, source_id, variable_id, unit_id, tms_meta):
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
                         data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
-                    push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
+                        push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
                     logger.info("For the meta data : {}".format(tms_meta))
 
 
+def init(pool, version, variable, unit, unit_type):
+    source_name = "WRF_TEST"
+    add_source(pool=pool, model=source_name, version=version)
 
-def init(session, model, version, variable, unit, unit_type):
-    if get_source_id(session=session, model=model, version=version) is None:
-        add_source(session=session, model=model, version=version, parameters=None)
+    add_variable(pool=pool, variable=variable)
 
-    if get_variable_id(session=session, variable=variable) is None:
-        add_variable(session=session, variable=variable)
-
-    if get_unit_id(session=session, unit=unit, unit_type=unit_type) is None:
-        add_unit(session=session, unit=unit, unit_type=unit_type)
+    add_unit(pool=pool, unit=unit, unit_type=unit_type)
 
 
 if __name__=="__main__":
@@ -242,7 +229,6 @@ if __name__=="__main__":
                     }
     """
     try:
-
         # source details
         model = "WRF_A"
         version = "v3"
@@ -264,38 +250,21 @@ if __name__=="__main__":
         PORT = 3306
         DATABASE = "test_schema"
 
-        # connect to the MySQL engine
-        logger.info("Connecting to database ")
-        engine = get_engine(DIALECT_MYSQL, DRIVER_PYMYSQL, HOST, PORT, DATABASE,
-                USERNAME, PASSWORD)
-
-        Session = get_sessionmaker(engine=engine)
-
-        session = Session()
-
-        init(session, model, version, variable, unit, unit_type)
-
         pool = get_Pool(host=HOST, port=PORT, user=USERNAME, password=PASSWORD, db=DATABASE)
 
-        # Retrieve db version.
-        conn = pool.get_conn()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT VERSION()")
-            data = cursor.fetchone()
-            logger.info("Database version : %s " % data)
-        if conn is not None:
-            pool.release(conn)
+        init(pool=pool, version=version, variable=variable,
+                unit=unit, unit_type=unit_type)
 
-        variable_id = get_variable_id(session=session, variable=variable)
-        unit_id = get_unit_id(session=session, unit=unit, unit_type=unit_type)
+        variable_id = get_variable_id(pool=pool, variable=variable)
+        unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
         sim_tag = 'evening_18hrs'
-        source_id = get_source_id(session=session, model=model, version=version)
+        source_id = get_source_id(pool=pool, model="WRF_TEST", version=version)
 
         tms_meta = {
                 'sim_tag'       : sim_tag,
                 'scheduled_date': scheduled_date,
-                'model'         : model,
+                'model'         : "WRF_TEST",
                 'version'       : version,
                 'variable'      : variable,
                 'unit'          : unit,
@@ -303,7 +272,7 @@ if __name__=="__main__":
                 }
 
         try:
-            read_netcdf_file(session=session, pool=pool, source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
+            read_netcdf_file(pool=pool, source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
         except Exception as e:
             logger.error("Net CDF file reading error.")
             print('Net CDF file reading error.')
