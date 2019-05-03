@@ -113,7 +113,8 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
-        times = list(set(nc_fid.variables['XTIME'][:]))  # set is used to remove duplicates
+        # times = list(set(nc_fid.variables['XTIME'][:]))  # set is used to remove duplicates
+        times = nc_fid.variables['XTIME'][:]
 
         ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
         ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
@@ -169,7 +170,7 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
                         data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
-                        push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
+                    push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))

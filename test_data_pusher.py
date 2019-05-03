@@ -111,8 +111,7 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
 
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
-        times = list(set(nc_fid.variables['XTIME'][:]))  # set is used to remove duplicates
-        print("############ length times: ##############", len(times))
+        times = nc_fid.variables['XTIME'][:]
 
         ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
         ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
@@ -167,7 +166,7 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
                         t = datetime_utc_to_lk(ts_time, shift_mins=0)
                         data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
-                        push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
+                    push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
 
                 else:
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
@@ -248,7 +247,7 @@ if __name__=="__main__":
         PASSWORD = "password"
         HOST = "127.0.0.1"
         PORT = 3306
-        DATABASE = "test_schema"
+        DATABASE = "test_schema2"
 
         pool = get_Pool(host=HOST, port=PORT, user=USERNAME, password=PASSWORD, db=DATABASE)
 
