@@ -146,8 +146,7 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
 
                 add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
-                        description="WRF point",
-                        station_type=StationEnum.WRF)
+                        description="WRF point", station_type=StationEnum.WRF)
                 station_id = get_station_id(pool=pool, latitude=lat, longitude=lon,
                             station_type=StationEnum.WRF)
 
