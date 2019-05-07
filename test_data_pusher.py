@@ -3,6 +3,7 @@ from netCDF4 import Dataset
 import numpy as np
 import os
 from datetime import datetime, timedelta
+from pymysql import IntegrityError
 
 from db_adapter.base import get_Pool
 
@@ -29,10 +30,12 @@ def push_rainfall_to_db(pool, ts_data, ts_run):
 
     try:
         ts.insert_timeseries(timeseries=ts_data, run_tuple=ts_run)
-    except Exception:
-        logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
-        traceback.print_exc()
-        return False
+    except IntegrityError as error:
+        if error.args[0] == 1062:
+            logger.log("Timeseries id {} already exists in the database run table".format(ts_run[0]))
+        else :
+            logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
+            traceback.print_exc()
 
     try:
         fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
@@ -146,25 +149,21 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
 
                 ts = Timeseries(pool)
 
-                try:
-                    tms_id = ts.generate_timeseries_id(tms_meta)
-                    logger.info('HASH SHA256 created: {}'.format(tms_id))
+                tms_id = ts.generate_timeseries_id(tms_meta)
+                logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
-                           unit_id, None, tms_meta["scheduled_date"])
-                    data_list = []
-                    # generate timeseries for each station
-                    for i in range(len(diff)):
-                        ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                                minutes=times[i].item())
-                        t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
+                run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
+                       unit_id, None, tms_meta["scheduled_date"])
+                data_list = []
+                # generate timeseries for each station
+                for i in range(len(diff)):
+                    ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                            minutes=times[i].item())
+                    t = datetime_utc_to_lk(ts_time, shift_mins=0)
+                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
-                    push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
-                except Exception as e:
-                    print(e)
-                    logger.info("Timseries id already exists in the database : {}".format(tms_id))
-                    logger.info("For the meta data : {}".format(tms_meta))
+                push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
+
 
 
 def init(pool, version, variable, unit, unit_type):
