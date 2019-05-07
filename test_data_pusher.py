@@ -60,8 +60,6 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
     """
 
     :param pool: database connection pool
-    :param rainc_net_cdf_file_path:
-    :param rainnc_net_cdf_file_path:
     :param source_id:
     :param variable_id:
     :param unit_id:
@@ -73,10 +71,10 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
     time_unit_info:  minutes since 2019-04-02T18:00:00
     """
 
-    if not os.path.exists("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINC_2019-04-03_A.nc"):
+    if not os.path.exists("/home/shadhini/Documents/CUrW/NetCDF/RAINC_2019-03-17_A.nc"):
         logger.warning('no rainc netcdf')
         print('no rainc netcdf')
-    elif not os.path.exists("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINNC_2019-04-03_A.nc"):
+    elif not os.path.exists("/home/shadhini/Documents/CUrW/NetCDF/RAINNC_2019-03-17_A.nc"):
         logger.warning('no rainnc netcdf')
         print('no rainnc netcdf')
     else:
@@ -84,7 +82,7 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
         """
         RAINC netcdf data extraction
         """
-        nc_fid = Dataset("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINC_2019-04-03_A.nc", mode='r')
+        nc_fid = Dataset("/home/shadhini/Documents/CUrW/NetCDF/RAINC_2019-03-17_A.nc", mode='r')
 
         time_unit_info = nc_fid.variables['XTIME'].units
 
@@ -107,7 +105,7 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
         """
         RAINNC netcdf data extraction
         """
-        nnc_fid = Dataset("/home/shadhini/Downloads/netcdf_data_uploader/data/RAINNC_2019-04-03_A.nc", mode='r')
+        nnc_fid = Dataset("/home/shadhini/Documents/CUrW/NetCDF/RAINNC_2019-03-17_A.nc", mode='r')
 
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
@@ -148,10 +146,7 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
 
                 ts = Timeseries(pool)
 
-                tms_id = ts.get_timeseries_id_if_exists(tms_meta)
-                logger.info("Existing timeseries id: {}".format(tms_id))
-
-                if tms_id is None:
+                try:
                     tms_id = ts.generate_timeseries_id(tms_meta)
                     logger.info('HASH SHA256 created: {}'.format(tms_id))
 
@@ -166,8 +161,8 @@ def read_netcdf_file(pool, source_id, variable_id, unit_id, tms_meta):
                         data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
                     push_rainfall_to_db(pool=pool, ts_data=data_list, ts_run=run)
-
-                else:
+                except Exception as e:
+                    print(e)
                     logger.info("Timseries id already exists in the database : {}".format(tms_id))
                     logger.info("For the meta data : {}".format(tms_meta))
 
@@ -246,7 +241,7 @@ if __name__=="__main__":
         PASSWORD = "password"
         HOST = "127.0.0.1"
         PORT = 3306
-        DATABASE = "test_schema2"
+        DATABASE = "test_schema"
 
         pool = get_Pool(host=HOST, port=PORT, user=USERNAME, password=PASSWORD, db=DATABASE)
 
@@ -275,12 +270,14 @@ if __name__=="__main__":
             logger.error("Net CDF file reading error.")
             print('Net CDF file reading error.')
             traceback.print_exc()
+        finally:
+            pool.destroy()
+
 
     except Exception as e:
         logger.error('JSON config data loading error.')
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
-        pool.destroy()
         logger.info("Process finished.")
         print("Process finished.")
