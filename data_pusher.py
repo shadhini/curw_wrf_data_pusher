@@ -36,7 +36,6 @@ def push_rainfall_to_db(ts, ts_data, ts_run):
     except DuplicateEntryError:
         logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
         logger.info("For the meta data : {}".format(ts_run))
-        traceback.print_exc()
         pass
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
