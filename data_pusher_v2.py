@@ -368,11 +368,12 @@ if __name__=="__main__":
                 print('Exception occurred while updating fgt')
                 traceback.print_exc()
 
+            pool.destroy()
+
     except Exception as e:
         logger.error('JSON config data loading error.')
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
-        pool.destroy()
         logger.info("Process finished.")
         print("Process finished.")

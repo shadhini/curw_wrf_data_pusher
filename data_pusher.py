@@ -4,6 +4,7 @@ import numpy as np
 import os
 import json
 from datetime import datetime, timedelta
+from pymysql import IntegrityError
 
 from db_adapter.base import get_Pool
 
@@ -12,6 +13,7 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrfv3_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
+from db_adapter.exceptions import DuplicateEntryError
 
 from logger import logger
 
@@ -31,6 +33,11 @@ def push_rainfall_to_db(ts, ts_data, ts_run):
 
     try:
         ts.insert_timeseries(timeseries=ts_data, run_tuple=ts_run)
+    except DuplicateEntryError:
+        logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
+        logger.info("For the meta data : {}".format(ts_run))
+        traceback.print_exc()
+        pass
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
         traceback.print_exc()
@@ -142,28 +149,28 @@ def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path
                     add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
                             description="WRF point", station_type=StationEnum.WRF)
 
-                tms_id = ts.get_timeseries_id_if_exists(tms_meta)
-                logger.info("Existing timeseries id: {}".format(tms_id))
+                # tms_id = ts.get_timeseries_id_if_exists(tms_meta)
+                # logger.info("Existing timeseries id: {}".format(tms_id))
 
-                if tms_id is None:
-                    tms_id = ts.generate_timeseries_id(tms_meta)
-                    logger.info('HASH SHA256 created: {}'.format(tms_id))
+                # if tms_id is None:
+                tms_id = ts.generate_timeseries_id(tms_meta)
+                logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
-                           unit_id, None, tms_meta["scheduled_date"])
-                    data_list = []
-                    # generate timeseries for each station
-                    for i in range(len(diff)):
-                        ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                                minutes=times[i].item())
-                        t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
+                run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
+                       unit_id, None, tms_meta["scheduled_date"])
+                data_list = []
+                # generate timeseries for each station
+                for i in range(len(diff)):
+                    ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                            minutes=times[i].item())
+                    t = datetime_utc_to_lk(ts_time, shift_mins=0)
+                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
 
-                    push_rainfall_to_db(ts=ts, ts_data=data_list, ts_run=run)
+                push_rainfall_to_db(ts=ts, ts_data=data_list, ts_run=run)
 
-                else:
-                    logger.info("Timseries id already exists in the database : {}".format(tms_id))
-                    logger.info("For the meta data : {}".format(tms_meta))
+                # else:
+                #     logger.info("Timseries id already exists in the database : {}".format(tms_id))
+                #     logger.info("For the meta data : {}".format(tms_meta))
 
 
 if __name__=="__main__":
@@ -362,11 +369,12 @@ if __name__=="__main__":
                 print('Exception occurred while updating fgt')
                 traceback.print_exc()
 
+        pool.destroy()
+
     except Exception as e:
         logger.error('JSON config data loading error.')
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
-        pool.destroy()
         logger.info("Process finished.")
         print("Process finished.")
