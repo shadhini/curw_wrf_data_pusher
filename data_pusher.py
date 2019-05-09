@@ -116,7 +116,7 @@ def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path
 
         ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
         ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                minutes=float(max(times)))
+                minutes=float(sorted(set(times))[-2]))
 
         start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
         end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
