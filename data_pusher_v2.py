@@ -4,6 +4,7 @@ import numpy as np
 import os
 import json
 from datetime import datetime, timedelta
+from pymysql import IntegrityError
 
 from db_adapter.base import get_Pool
 
@@ -12,14 +13,16 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrfv3_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
+from db_adapter.exceptions import DuplicateEntryError
 
 from logger import logger
 
+SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 wrf_v3_stations = {}
 
 
-def push_rainfall_to_db(ts, ts_data, ts_run):
+def push_rainfall_to_db(ts, ts_data):
     """
 
     :param pool: database connection pool
@@ -29,9 +32,13 @@ def push_rainfall_to_db(ts, ts_data, ts_run):
     """
 
     try:
-        ts.insert_timeseries(timeseries=ts_data, run_tuple=ts_run)
+        ts.insert_data(ts_data, True) # upsert True
+    # except DuplicateEntryError:
+    #     logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
+    #     logger.info("For the meta data : {}".format(ts_run))
+    #     pass
     except Exception:
-        logger.error("Inserting the timseseries for tms_id {} failed.".format(ts_run[0]))
+        logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
         traceback.print_exc()
         return False
 
@@ -48,8 +55,8 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
-                     source_id, variable_id, unit_id, tms_meta):
+def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
+                     source_id, variable_id, unit_id, tms_meta, fgt):
     """
 
     :param pool: database connection pool
@@ -107,12 +114,14 @@ def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path
         # times = list(set(nc_fid.variables['XTIME'][:]))  # set is used to remove duplicates
         times = nc_fid.variables['XTIME'][:]
 
-        ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
-        ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                minutes=float(max(times)))
-
-        start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-        end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        # ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
+        # ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+        #         minutes=float(sorted(set(times))[-2]))
+        #
+        # start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        # end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        start_date = fgt
+        end_date = fgt
 
         prcp = rainc + rainnc
 
@@ -123,6 +132,8 @@ def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path
 
         width = len(lons)
         height = len(lats)
+
+        ts = Timeseries(pool)
 
         for y in range(height):
             for x in range(width):
@@ -148,21 +159,24 @@ def read_netcdf_file(ts, pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path
                     tms_id = ts.generate_timeseries_id(tms_meta)
                     logger.info('HASH SHA256 created: {}'.format(tms_id))
 
-                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id,
-                           unit_id, None, tms_meta["scheduled_date"])
-                    data_list = []
-                    # generate timeseries for each station
-                    for i in range(len(diff)):
-                        ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                                minutes=times[i].item())
-                        t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), float(diff[i, y, x])])
-
-                    push_rainfall_to_db(ts=ts, ts_data=data_list, ts_run=run)
-
+                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id, unit_id)
+                    try:
+                        ts.insert_run(run)
+                    except Exception:
+                        logger.error("Exception occurred while inserting run entry {}".format(run))
+                        traceback.print_exc()
                 else:
-                    logger.info("Timseries id already exists in the database : {}".format(tms_id))
-                    logger.info("For the meta data : {}".format(tms_meta))
+                    ts.update_start_date(id_=tms_id, start_date=fgt)
+
+                data_list = []
+                # generate timeseries for each station
+                for i in range(len(diff)):
+                    ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                            minutes=times[i].item())
+                    t = datetime_utc_to_lk(ts_time, shift_mins=0)
+                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
+
+                push_rainfall_to_db(ts=ts, ts_data=data_list)
 
 
 if __name__=="__main__":
@@ -204,7 +218,6 @@ if __name__=="__main__":
 
     tms_meta = {
                     'sim_tag'       : sim_tag,
-                    'scheduled_date': scheduled_date,
                     'latitude'      : latitude,
                     'longitude'     : longitude,
                     'model'         : model,
@@ -302,8 +315,8 @@ if __name__=="__main__":
 
         for date in dates:
             run_date_str = date
-            scheduled_date = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-                    .strftime('%Y-%m-%d 06:45:00')
+            fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
+                    .strftime('%Y-%m-%d 23:45:00')
 
             daily_dir = 'STATIONS_{}'.format(run_date_str)
 
@@ -312,8 +325,6 @@ if __name__=="__main__":
             pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
 
             wrf_v3_stations = get_wrfv3_stations(pool)
-
-            ts = Timeseries(pool)
 
             # # Retrieve db version.
             # conn = pool.get_conn()
@@ -343,7 +354,6 @@ if __name__=="__main__":
 
                 tms_meta = {
                         'sim_tag'       : sim_tag,
-                        'scheduled_date': scheduled_date,
                         'model'         : source_name,
                         'version'       : version,
                         'variable'      : variable,
@@ -352,21 +362,21 @@ if __name__=="__main__":
                         }
 
                 try:
-                    read_netcdf_file(ts=ts, pool=pool, rainc_net_cdf_file_path=rainc_net_cdf_file_path,
+                    read_netcdf_file(pool=pool, rainc_net_cdf_file_path=rainc_net_cdf_file_path,
                             rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
+                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
                 except Exception as e:
                     logger.error("Net CDF file reading error.")
                     print('Net CDF file reading error.')
                     traceback.print_exc()
 
-            try:
-                fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-                ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-            except Exception as e:
-                logger.error('Exception occurred while updating fgt')
-                print('Exception occurred while updating fgt')
-                traceback.print_exc()
+            # try:
+            #     fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+            #     ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
+            # except Exception as e:
+            #         logger.error('Exception occurred while updating fgt')
+            #         print('Exception occurred while updating fgt')
+            #         traceback.print_exc()
 
             pool.destroy()
 
@@ -377,3 +387,4 @@ if __name__=="__main__":
     finally:
         logger.info("Process finished.")
         print("Process finished.")
+
