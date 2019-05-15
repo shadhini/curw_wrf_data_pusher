@@ -43,14 +43,6 @@ def push_rainfall_to_db(ts, ts_data):
         return False
 
 
-def get_two_element_average(prcp, return_diff=True):
-    avg_prcp = (prcp[1:] + prcp[:-1]) * 0.5
-    if return_diff:
-        return avg_prcp - np.insert(avg_prcp[:-1], 0, [0], axis=0)
-    else:
-        return avg_prcp
-
-
 def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
