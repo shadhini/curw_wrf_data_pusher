@@ -55,7 +55,7 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
+def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                      source_id, variable_id, unit_id, tms_meta, fgt):
     """
 
@@ -72,26 +72,22 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
     lat_unit_info:  degree_north
     time_unit_info:  minutes since 2019-04-02T18:00:00
     """
-
-    if not os.path.exists(rainc_net_cdf_file_path):
-        logger.warning('no rainc netcdf')
-        print('no rainc netcdf')
-    elif not os.path.exists(rainnc_net_cdf_file_path):
+    if not os.path.exists(rainnc_net_cdf_file_path):
         logger.warning('no rainnc netcdf')
         print('no rainnc netcdf')
     else:
 
         """
-        RAINC netcdf data extraction
+        RAINNC netcdf data extraction
         """
-        nc_fid = Dataset(rainc_net_cdf_file_path, mode='r')
+        nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
 
-        time_unit_info = nc_fid.variables['XTIME'].units
+        time_unit_info = nnc_fid.variables['XTIME'].units
 
         time_unit_info_list = time_unit_info.split(' ')
 
-        lats = nc_fid.variables['XLAT'][0, :, 0]
-        lons = nc_fid.variables['XLONG'][0, 0, :]
+        lats = nnc_fid.variables['XLAT'][0, :, 0]
+        lons = nnc_fid.variables['XLONG'][0, 0, :]
 
         lon_min = lons[0].item()
         lat_min = lats[0].item()
@@ -102,32 +98,16 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
         lat_inds = np.where((lats >= lat_min) & (lats <= lat_max))
         lon_inds = np.where((lons >= lon_min) & (lons <= lon_max))
 
-        rainc = nc_fid.variables['RAINC'][:, lat_inds[0], lon_inds[0]]
-
-        """
-        RAINNC netcdf data extraction
-        """
-        nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
-
         rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
-        # times = list(set(nc_fid.variables['XTIME'][:]))  # set is used to remove duplicates
-        times = nc_fid.variables['XTIME'][:]
+        times = nnc_fid.variables['XTIME'][:]
 
-        ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
-        # ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-        #         minutes=float(sorted(set(times))[-2]))
-
-        start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-        # end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        start_date = fgt
         end_date = fgt
 
-        prcp = rainc + rainnc
-
-        nc_fid.close()
         nnc_fid.close()
 
-        diff = get_two_element_average(prcp)
+        diff = get_two_element_average(rainnc)
 
         width = len(lons)
         height = len(lats)
@@ -165,7 +145,8 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
                         logger.error("Exception occurred while inserting run entry {}".format(run))
                         traceback.print_exc()
                 else:
-                    ts.update_latest_fgt(id_=tms_id, fgt=fgt)
+                    # ts.update_latest_fgt(id_=tms_id, fgt=fgt)
+                    ts.update_start_date(id_=tms_id, start_date=start_date)
 
                 data_list = []
                 # generate timeseries for each station
@@ -331,11 +312,7 @@ if __name__=="__main__":
         unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
         for wrf_model in wrf_model_list:
-            rainc_net_cdf_file = 'RAINC_{}_{}.nc'.format(run_date_str, wrf_model)
-            rainnc_net_cdf_file = 'RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
-
-            rainc_net_cdf_file_path = os.path.join(output_dir, rainc_net_cdf_file)
-            logger.info("rainc_net_cdf_file_path : {}".format(rainc_net_cdf_file_path))
+            rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
             rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
             logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
@@ -354,8 +331,7 @@ if __name__=="__main__":
                     }
 
             try:
-                read_netcdf_file(pool=pool, rainc_net_cdf_file_path=rainc_net_cdf_file_path,
-                        rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
+                read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
             except Exception as e:
                 logger.error("Net CDF file reading error.")
