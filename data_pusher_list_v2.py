@@ -71,7 +71,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
         """
         RAINNC netcdf data extraction
         """
-        nnc_fid = Dataset(rainc_net_cdf_file_path, mode='r')
+        nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
 
         time_unit_info = nnc_fid.variables['XTIME'].units
 
