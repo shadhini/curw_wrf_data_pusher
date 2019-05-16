@@ -39,7 +39,7 @@ fi
 
 # Push WRFv3 data into the database
 echo "Running wrf_v3_data_pusher.py. Logs Available in wrf_v3_data_pusher.log file."
-#python data_pusher_list_v2.py >> wrf_v3_data_pusher.log 2>&1
+#python data_pusher_list_wrfv4.py >> wrf_v3_data_pusher.log 2>&1
 python init.py >> wrf_v3_data_pusher.log 2>&1
 
 

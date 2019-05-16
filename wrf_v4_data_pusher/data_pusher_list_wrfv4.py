@@ -102,6 +102,12 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
         times = nnc_fid.variables['XTIME'][:]
 
+        # ts_start_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S')
+        # ts_end_date = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+        #         minutes=float(sorted(set(times))[-2]))
+        #
+        # start_date = datetime_utc_to_lk(ts_start_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+        # end_date = datetime_utc_to_lk(ts_end_date, shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
         start_date = fgt
         end_date = fgt
 
@@ -143,7 +149,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                         logger.error("Exception occurred while inserting run entry {}".format(run))
                         traceback.print_exc()
                 else:
-                    ts.update_latest_fgt(id_=tms_id, fgt=fgt)
+                    ts.update_latest_fgt(id_=tms_id, fgt=fgt)  # to run forward
 
                 data_list = []
                 # generate timeseries for each station
@@ -166,7 +172,11 @@ if __name__=="__main__":
       "version": "v3",
       "wrf_model_list": "A,C,E,SE",
 
-      "start_date": "2019-03-24",
+      "start_date": ["2019-03-26","2019-03-27","2019-03-28","2019-03-29","2019-03-30","2019-03-31","2019-04-01","2019-04-02","2019-04-03",
+                   "2019-04-04","2019-04-05","2019-04-06","2019-04-07","2019-04-08","2019-04-09","2019-04-10","2019-04-11","2019-04-12","2019-04-13",
+                  "2019-04-14","2019-04-15","2019-04-16","2019-04-17","2019-04-18","2019-04-19","2019-04-20","2019-04-21","2019-04-22","2019-04-23",
+                  "2019-04-24","2019-04-25","2019-04-26","2019-04-27","2019-04-28","2019-04-29","2019-04-30","2019-05-01","2019-05-02","2019-05-03",
+                  "2019-05-04","2019-05-05"],
 
       "host": "127.0.0.1",
       "user": "root",
@@ -184,7 +194,7 @@ if __name__=="__main__":
     daily_dir :  STATIONS_2019-03-23
     output_dir :  /mnt/disks/wrf-mod/STATIONS_2019-03-23
     sim_tag :  WRFv3_A
-    rainnc_net_cdf_file :  d03_RAINNC_2019-03-23_A.nc
+    rainnc_net_cdf_file :  RAINNC_2019-03-23_A.nc
     rainnc_net_cdf_file_path :  /mnt/disks/wrf-mod/STATIONS_2019-03-23/d03_RAINNC_2019-03-23_A.nc    
 
     tms_meta = {
@@ -279,71 +289,74 @@ if __name__=="__main__":
             exit(1)
 
         if 'start_date' in config and (config['start_date']!=""):
-            run_date_str = config['start_date']
-            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-            #     .strftime('%Y-%m-%d 23:45:00')
+            dates = config['start_date']
         else:
-            run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            # fgt = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
+            logger.error("start_date not specified in config file.")
+            exit(1)
 
-        daily_dir = 'STATIONS_{}'.format(run_date_str)
+        for date in dates:
+            run_date_str = date
+            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
+            #         .strftime('%Y-%m-%d 23:45:00')
 
-        output_dir = os.path.join(wrf_dir, daily_dir)
+            daily_dir = 'STATIONS_{}'.format(run_date_str)
 
-        pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
+            output_dir = os.path.join(wrf_dir, daily_dir)
 
-        wrf_v3_stations = get_wrfv3_stations(pool)
+            pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
 
-        # # Retrieve db version.
-        # conn = pool.get_conn()
-        # with conn.cursor() as cursor:
-        #     cursor.execute("SELECT VERSION()")
-        #     data = cursor.fetchone()
-        #     logger.info("Database version : %s " % data)
-        # if conn is not None:
-        #     pool.release(conn)
+            wrf_v3_stations = get_wrfv3_stations(pool)
 
-        variable_id = get_variable_id(pool=pool, variable=variable)
-        unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
+            # # Retrieve db version.
+            # conn = pool.get_conn()
+            # with conn.cursor() as cursor:
+            #     cursor.execute("SELECT VERSION()")
+            #     data = cursor.fetchone()
+            #     logger.info("Database version : %s " % data)
+            # if conn is not None:
+            #     pool.release(conn)
 
-        for wrf_model in wrf_model_list:
-            rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+            variable_id = get_variable_id(pool=pool, variable=variable)
+            unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
-            rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
-            logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+            for wrf_model in wrf_model_list:
+                rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
-            fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
+                rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
+                logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
 
-            sim_tag = 'evening_18hrs'
-            source_name = "{}_{}".format(model, wrf_model)
-            source_id = get_source_id(pool=pool, model=source_name, version=version)
+                fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
 
-            tms_meta = {
-                    'sim_tag'       : sim_tag,
-                    'model'         : source_name,
-                    'version'       : version,
-                    'variable'      : variable,
-                    'unit'          : unit,
-                    'unit_type'     : unit_type.value
-                    }
+                sim_tag = 'evening_18hrs'
+                source_name = "{}_{}".format(model, wrf_model)
+                source_id = get_source_id(pool=pool, model=source_name, version=version)
 
-            try:
-                read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
-            except Exception as e:
-                logger.error("Net CDF file reading error.")
-                print('Net CDF file reading error.')
-                traceback.print_exc()
+                tms_meta = {
+                        'sim_tag'       : sim_tag,
+                        'model'         : source_name,
+                        'version'       : version,
+                        'variable'      : variable,
+                        'unit'          : unit,
+                        'unit_type'     : unit_type.value
+                        }
 
-        # try:
-        #     fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-        #     ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-        # except Exception as e:
-        #         logger.error('Exception occurred while updating fgt')
-        #         print('Exception occurred while updating fgt')
-        #         traceback.print_exc()
+                try:
+                    read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
+                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
+                except Exception as e:
+                    logger.error("Net CDF file reading error.")
+                    print('Net CDF file reading error.')
+                    traceback.print_exc()
 
-        pool.destroy()
+            # try:
+            #     fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
+            #     ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
+            # except Exception as e:
+            #         logger.error('Exception occurred while updating fgt')
+            #         print('Exception occurred while updating fgt')
+            #         traceback.print_exc()
+
+            pool.destroy()
 
     except Exception as e:
         logger.error('JSON config data loading error.')
@@ -352,3 +365,4 @@ if __name__=="__main__":
     finally:
         logger.info("Process finished.")
         print("Process finished.")
+

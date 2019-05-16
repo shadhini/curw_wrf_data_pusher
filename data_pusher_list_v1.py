@@ -4,6 +4,7 @@ import numpy as np
 import os
 import json
 from datetime import datetime, timedelta
+import time
 from pymysql import IntegrityError
 
 from db_adapter.base import get_Pool
@@ -20,6 +21,14 @@ from logger import logger
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 wrf_v3_stations = {}
+
+
+def get_file_last_modified_time(file_path):
+
+    # returns local time (UTC + 5 30)
+    modified_time = time.gmtime(os.path.getmtime(file_path) + 19800)
+
+    return time.strftime('%Y-%m-%d %H:%M:%S', modified_time)
 
 
 def push_rainfall_to_db(ts, ts_data):
@@ -304,8 +313,8 @@ if __name__=="__main__":
 
         for date in dates:
             run_date_str = date
-            fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-                    .strftime('%Y-%m-%d 23:45:00')
+            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
+            #         .strftime('%Y-%m-%d 23:45:00')
 
             daily_dir = 'STATIONS_{}'.format(run_date_str)
 
@@ -336,6 +345,8 @@ if __name__=="__main__":
 
                 rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
                 logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+
+                fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
 
                 sim_tag = 'evening_18hrs'
                 source_name = "{}_{}".format(model, wrf_model)
