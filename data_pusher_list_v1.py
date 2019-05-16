@@ -226,7 +226,7 @@ if __name__=="__main__":
                     }
     """
     try:
-        config = json.loads(open('config.json').read())
+        config = json.loads(open('list_config.json').read())
 
         # source details
         if 'wrf_dir' in config and (config['wrf_dir']!=""):

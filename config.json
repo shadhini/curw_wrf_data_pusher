@@ -1,0 +1,19 @@
+{
+  "wrf_dir": "/mnt/disks/wrf-mod",
+  "model": "WRF",
+  "version": "v3",
+  "wrf_model_list": "A,C,E,SE",
+
+  "start_date": "2019-04-19",
+
+  "host": "35.230.102.148",
+  "user": "root",
+  "password": "cfcwm07",
+  "db": "curw_fcst",
+  "port": 3306,
+
+  "unit": "mm",
+  "unit_type": "Accumulative",
+
+  "variable": "Precipitation"
+}
