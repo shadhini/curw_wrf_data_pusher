@@ -3,7 +3,7 @@
 # Print execution date time
 echo `date`
 
-echo "Changing into ~/wrf_v3_data_pusher"
+echo "Changing into ~/wrf_v4_data_pusher"
 cd /home/uwcc-admin/wrf_v4_data_pusher
 echo "Inside `pwd`"
 
@@ -38,8 +38,8 @@ then
 fi
 
 # Push WRFv4 data into the database
-echo "Running wrf_v3_data_pusher.py. Logs Available in wrf_v3_data_pusher.log file."
-python wrf_v4_data_pusher.py >> wrf_v4_data_pusher.log 2>&1
+echo "Running scripts to push wrf v4 data. Logs Available in wrf_v4_data_pusher.log file."
+python data_pusher_list_v2.py >> wrf_v4_data_pusher.log 2>&1
 
 # Deactivating virtual environment
 echo "Deactivating virtual environment"
