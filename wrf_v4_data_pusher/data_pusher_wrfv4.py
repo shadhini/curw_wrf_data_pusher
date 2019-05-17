@@ -283,7 +283,7 @@ if __name__=="__main__":
             # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
             #     .strftime('%Y-%m-%d 23:45:00')
         else:
-            run_date_str = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+            run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
             # fgt = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
 
         daily_dir = 'STATIONS_{}'.format(run_date_str)

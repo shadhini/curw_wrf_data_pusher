@@ -149,7 +149,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                         logger.error("Exception occurred while inserting run entry {}".format(run))
                         traceback.print_exc()
                 else:
-                    ts.update_latest_fgt(id_=tms_id, fgt=fgt)  # to run forward
+                    ts.update_start_date(id_=tms_id, start_date=fgt)  # run backward
 
                 data_list = []
                 # generate timeseries for each station
@@ -320,7 +320,7 @@ if __name__=="__main__":
             unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
             for wrf_model in wrf_model_list:
-                rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+                rainnc_net_cdf_file = 'RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
                 rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
                 logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
