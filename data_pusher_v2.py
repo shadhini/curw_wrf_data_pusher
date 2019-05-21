@@ -23,6 +23,11 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 wrf_v3_stations = {}
 
 
+def get_per_time_slot_values(prcp):
+    per_interval_prcp = (prcp[1:] - prcp[:-1])
+    return per_interval_prcp
+
+
 def get_file_last_modified_time(file_path):
 
     # returns local time (UTC + 5 30)
@@ -107,6 +112,8 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
         nnc_fid.close()
 
+        diff = get_per_time_slot_values(rainnc)
+
         width = len(lons)
         height = len(lats)
 
@@ -151,7 +158,10 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                             minutes=times[i].item())
                     t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(rainnc[i, y, x])])
+                    if i==0:
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(rainnc[i, y, x])])
+                    else:
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i-1, y, x])])
 
                 push_rainfall_to_db(ts=ts, ts_data=data_list)
 
