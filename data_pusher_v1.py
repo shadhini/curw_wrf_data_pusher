@@ -177,14 +177,11 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
 
                 data_list = []
                 # generate timeseries for each station
-                for i in range(len(prcp)):
+                for i in range(len(diff)):
                     ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                             minutes=times[i].item())
                     t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                    if i==0:
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(prcp[i, y, x])])
-                    else:
-                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i-1, y, x])])
+                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
 
                 push_rainfall_to_db(ts=ts, ts_data=data_list)
 
