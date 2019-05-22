@@ -372,4 +372,5 @@ if __name__=="__main__":
     finally:
         logger.info("Process finished.")
         print("Process finished.")
+        exit(0)
 
