@@ -23,6 +23,31 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 wrf_v3_stations = {}
 
 
+def ssh_command(ssh, command):
+    ssh.invoke_shell()
+    stdin, stdout, stderr = ssh.exec_command(command)
+    for line in stdout.readlines():
+        print(line)
+    for line in stderr.readlines():
+        print(line)
+
+
+def gen_rfield_files(host, user, key, command):
+    try:
+        ssh = paramiko.SSHClient()
+        print('Calling paramiko')
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(hostname=host, username=user, key_filename=key)
+
+        ssh_command(ssh, command)
+    except Exception as e:
+        print('Connection Failed')
+        print(e)
+    finally:
+        print("Close connection")
+        ssh.close()
+
+
 def get_per_time_slot_values(prcp):
     per_interval_prcp = (prcp[1:] - prcp[:-1])
     return per_interval_prcp
@@ -357,6 +382,9 @@ if __name__=="__main__":
         print('JSON config data loading error.')
         traceback.print_exc()
     finally:
+        logger.info("Generate rfield files.")
+        gen_rfield_files(host="104.198.0.87", key="/home/shadhini/.ssh/uwcc-admin", user="uwcc-admin",
+                command="nohup /home/uwcc-admin/db_scripts/gen_rfield_v4.sh &> /home/uwcc-admin/db_scripts/nohup.out")
         logger.info("Process finished.")
         print("Process finished.")
         exit(0)
