@@ -5,6 +5,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import time
+import paramiko
 from pymysql import IntegrityError
 
 from db_adapter.base import get_Pool
@@ -383,7 +384,7 @@ if __name__=="__main__":
         traceback.print_exc()
     finally:
         logger.info("Generate rfield files.")
-        gen_rfield_files(host="104.198.0.87", key="/home/shadhini/.ssh/uwcc-admin", user="uwcc-admin",
+        gen_rfield_files(host="104.198.0.87", key="/home/uwcc-admin/.ssh/uwcc-admin", user="uwcc-admin",
                 command="nohup /home/uwcc-admin/db_scripts/gen_rfield_v4.sh &> /home/uwcc-admin/db_scripts/nohup.out")
         logger.info("Process finished.")
         print("Process finished.")

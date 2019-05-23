@@ -32,6 +32,8 @@ then
     pip install PyMySQL
     echo "Installing PyYAML"
     pip install PyYAML
+    echo "Installing paramiko"
+    pip install paramiko
     echo "Installing datalayer"
 #    pip install git+https://github.com/shadhini/curw_db_adapter.git -U
     pip install git+https://github.com/shadhini/curw_db_adapter.git
