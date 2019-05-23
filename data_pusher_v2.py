@@ -24,6 +24,19 @@ SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 wrf_v3_stations = {}
 
 
+def read_attribute_from_config_file(attribute, config):
+    """
+    :param attribute: key name of the config json file
+    :param config: loaded json file
+    :return:
+    """
+    if attribute in config and (config[attribute]!=""):
+        return config[attribute]
+    else:
+        logger.error("{} not specified in config file.".format(attribute))
+        exit(1)
+
+
 def ssh_command(ssh, command):
     ssh.invoke_shell()
     stdin, stdout, stderr = ssh.exec_command(command)
@@ -235,89 +248,36 @@ if __name__=="__main__":
         config = json.loads(open('config.json').read())
 
         # source details
-        if 'wrf_dir' in config and (config['wrf_dir']!=""):
-            wrf_dir = config['wrf_dir']
-        else:
-            logger.error("wrf_dir not specified in config file.")
-            exit(1)
-
-        if 'model' in config and (config['model']!=""):
-            model = config['model']
-        else:
-            logger.error("model not specified in config file.")
-            exit(1)
-
-        if 'version' in config and (config['version']!=""):
-            version = config['version']
-        else:
-            logger.error("version not specified in config file.")
-            exit(1)
-
-        if 'wrf_model_list' in config and (config['wrf_model_list']!=""):
-            wrf_model_list = config['wrf_model_list']
-            wrf_model_list = wrf_model_list.split(',')
-        else:
-            logger.error("wrf_model_list not specified in config file.")
-            exit(1)
+        wrf_dir = read_attribute_from_config_file('wrf_dir', config)
+        model = read_attribute_from_config_file('model', config)
+        version = read_attribute_from_config_file('version', config)
+        wrf_model_list = read_attribute_from_config_file('wrf_model_list', config)
+        wrf_model_list = wrf_model_list.split(',')
 
         # unit details
-        if 'unit' in config and (config['unit']!=""):
-            unit = config['unit']
-        else:
-            logger.error("unit not specified in config file.")
-            exit(1)
-
-        if 'unit_type' in config and (config['unit_type']!=""):
-            unit_type = UnitType.getType(config['unit_type'])
-        else:
-            logger.error("unit_type not specified in config file.")
-            exit(1)
+        unit = read_attribute_from_config_file('unit', config)
+        unit_type = UnitType.getType(read_attribute_from_config_file('unit_type', config))
 
         # variable details
-        if 'variable' in config and (config['variable']!=""):
-            variable = config['variable']
-        else:
-            logger.error("variable not specified in config file.")
-            exit(1)
+        variable = read_attribute_from_config_file('variable', config)
 
         # connection params
-        if 'host' in config and (config['host']!=""):
-            host = config['host']
-        else:
-            logger.error("host not specified in config file.")
-            exit(1)
+        host = read_attribute_from_config_file('host', config)
+        user = read_attribute_from_config_file('user', config)
+        password = read_attribute_from_config_file('password', config)
+        db = read_attribute_from_config_file('db', config)
+        port = read_attribute_from_config_file('port', config)
 
-        if 'user' in config and (config['user']!=""):
-            user = config['user']
-        else:
-            logger.error("user not specified in config file.")
-            exit(1)
-
-        if 'password' in config and (config['password']!=""):
-            password = config['password']
-        else:
-            logger.error("password not specified in config file.")
-            exit(1)
-
-        if 'db' in config and (config['db']!=""):
-            db = config['db']
-        else:
-            logger.error("db not specified in config file.")
-            exit(1)
-
-        if 'port' in config and (config['port']!=""):
-            port = config['port']
-        else:
-            logger.error("port not specified in config file.")
-            exit(1)
+        # rfield params
+        rfield_host = read_attribute_from_config_file('rfield_host', config)
+        rfield_user = read_attribute_from_config_file('rfield_user', config)
+        rfield_key = read_attribute_from_config_file('rfield_key', config)
+        rfield_command = read_attribute_from_config_file('rfield_command', config)
 
         if 'start_date' in config and (config['start_date']!=""):
             run_date_str = config['start_date']
-            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-            #     .strftime('%Y-%m-%d 23:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            # fgt = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
 
         daily_dir = 'STATIONS_{}'.format(run_date_str)
 
@@ -384,8 +344,7 @@ if __name__=="__main__":
         traceback.print_exc()
     finally:
         logger.info("Generate rfield files.")
-        gen_rfield_files(host="104.198.0.87", key="/home/uwcc-admin/.ssh/uwcc-admin", user="uwcc-admin",
-                command="nohup /home/uwcc-admin/db_scripts/gen_rfield_v3.sh &> /home/uwcc-admin/db_scripts/nohup.out")
+        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command)
         logger.info("Process finished.")
         print("Process finished.")
         exit(0)

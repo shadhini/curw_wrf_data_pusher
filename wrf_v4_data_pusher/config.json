@@ -15,5 +15,10 @@
   "unit": "mm",
   "unit_type": "Accumulative",
 
-  "variable": "Precipitation"
+  "variable": "Precipitation",
+
+  "rfield_host": "104.198.0.87",
+  "rfield_user": "uwcc-admin",
+  "rfield_key": "/home/uwcc-admin/.ssh/uwcc-admin",
+  "rfield_command": "nohup /home/uwcc-admin/db_scripts/gen_rfield_v4.sh &> /home/uwcc-admin/db_scripts/nohup.out"
 }
