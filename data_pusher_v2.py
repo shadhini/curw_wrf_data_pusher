@@ -161,13 +161,13 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
         for y in range(height):
             for x in range(width):
 
-                lat = float(lats[y])
-                lon = float(lons[x])
+                lat = float('%.6f' % lats[y])
+                lon = float('%.6f' % lons[x])
 
                 tms_meta['latitude'] = str(lat)
                 tms_meta['longitude'] = str(lon)
 
-                station_prefix = '{}_{}'.format(lat, lon)
+                station_prefix = 'wrf_{}_{}'.format(lat, lon)
 
                 station_id = wrf_v3_stations.get(station_prefix)
 

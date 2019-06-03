@@ -5,8 +5,8 @@ import os
 import json
 from datetime import datetime, timedelta
 import time
-import paramiko
 from pymysql import IntegrityError
+import paramiko
 
 from db_adapter.base import get_Pool
 
@@ -161,13 +161,13 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
         for y in range(height):
             for x in range(width):
 
-                lat = float('%.6f' % lats[y])
-                lon = float('%.6f' % lons[x])
+                lat = float(lats[y])
+                lon = float(lons[x])
 
                 tms_meta['latitude'] = str(lat)
                 tms_meta['longitude'] = str(lon)
 
-                station_prefix = 'wrf_{}_{}'.format(lat, lon)
+                station_prefix = '{}_{}'.format(lat, lon)
 
                 station_id = wrf_v3_stations.get(station_prefix)
 
@@ -276,11 +276,8 @@ if __name__=="__main__":
 
         if 'start_date' in config and (config['start_date']!=""):
             run_date_str = config['start_date']
-            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-            #     .strftime('%Y-%m-%d 23:45:00')
         else:
             run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            # fgt = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
 
         daily_dir = 'STATIONS_{}'.format(run_date_str)
 
