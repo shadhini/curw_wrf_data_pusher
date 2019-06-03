@@ -12,7 +12,7 @@ from db_adapter.base import get_Pool
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
-from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrfv3_stations
+from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
 from db_adapter.exceptions import DuplicateEntryError
 
@@ -143,8 +143,8 @@ def read_netcdf_file(pool, rainc_net_cdf_file_path, rainnc_net_cdf_file_path,
         for y in range(height):
             for x in range(width):
 
-                lat = float(lats[y])
-                lon = float(lons[x])
+                lat = float('%.6f' % lats[y])
+                lon = float('%.6f' % lons[x])
 
                 tms_meta['latitude'] = str(lat)
                 tms_meta['longitude'] = str(lon)
@@ -329,7 +329,7 @@ if __name__=="__main__":
 
             pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
 
-            wrf_v3_stations = get_wrfv3_stations(pool)
+            wrf_v3_stations = get_wrf_stations(pool)
 
             # # Retrieve db version.
             # conn = pool.get_conn()
