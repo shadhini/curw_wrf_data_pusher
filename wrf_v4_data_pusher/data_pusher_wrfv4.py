@@ -174,6 +174,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                 if station_id is None:
                     add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
                             description="WRF point", station_type=StationEnum.WRF)
+                    station_id = get_station_id(pool=pool, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
 
                 tms_id = ts.get_timeseries_id_if_exists(tms_meta)
                 logger.info("Existing timeseries id: {}".format(tms_id))
