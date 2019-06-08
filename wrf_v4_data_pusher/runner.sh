@@ -32,8 +32,6 @@ then
     pip install PyMySQL
     echo "Installing PyYAML"
     pip install PyYAML
-    echo "Installing paramiko"
-    pip install paramiko
     echo "Installing datalayer"
 #    pip install git+https://github.com/shadhini/curw_db_adapter.git -U
     pip install git+https://github.com/shadhini/curw_db_adapter.git
@@ -41,7 +39,8 @@ fi
 
 # Push WRFv4 data into the database
 echo "Running scripts to push wrf v4 data. Logs Available in wrf_v4_data_pusher.log file."
-python data_pusher_list_v2.py >> wrf_v4_data_pusher.log 2>&1
+python data_pusher_list_wrfv4.py >> wrf_v4_data_pusher.log 2>&1
+#python init.py >> wrf_v4_data_pusher.log 2>&1
 
 # Deactivating virtual environment
 echo "Deactivating virtual environment"

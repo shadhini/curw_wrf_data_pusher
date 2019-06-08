@@ -44,3 +44,4 @@ python data_pusher_wrfv4.py >> wrf_v4_data_pusher.log 2>&1
 # Deactivating virtual environment
 echo "Deactivating virtual environment"
 deactivate
+

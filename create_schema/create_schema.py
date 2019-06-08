@@ -14,7 +14,7 @@
 
 
 from db_adapter.curw_sim.models import create_curw_sim_db
-from db_adapter.curw_sim.models import Run, Data
+from db_adapter.curw_sim.models import Run, Data, GridMap
 
 print("Create curw_sim schema")
 

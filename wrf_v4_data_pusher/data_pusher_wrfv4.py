@@ -273,7 +273,8 @@ if __name__=="__main__":
         rfield_host = read_attribute_from_config_file('rfield_host', config)
         rfield_user = read_attribute_from_config_file('rfield_user', config)
         rfield_key = read_attribute_from_config_file('rfield_key', config)
-        rfield_command = read_attribute_from_config_file('rfield_command', config)
+        rfield_command1 = read_attribute_from_config_file('rfield_command1', config)
+        rfield_command2 = read_attribute_from_config_file('rfield_command2', config)
 
         if 'start_date' in config and (config['start_date']!=""):
             run_date_str = config['start_date']
@@ -348,7 +349,9 @@ if __name__=="__main__":
         traceback.print_exc()
     finally:
         logger.info("Generate rfield files.")
-        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command)
+        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command1)
+        logger.info("Generate rfield animations.")
+        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command2)
         logger.info("Process finished.")
         print("Process finished.")
         exit(0)
