@@ -1,8 +1,9 @@
 import traceback
 import pymysql
+from db_adapter.csv_utils import read_csv
 
 
-def update_run_table():
+def update_station_name_in_run_table():
     # Connect to the database
     connection = pymysql.connect(host='35.230.102.148',
             user='root',
@@ -33,4 +34,16 @@ def update_run_table():
         connection.close()
 
 
-update_run_table()
+# wrf_station_mapping_new_to_old = read_csv('wrf_new_to_old_id_mapping.csv')
+# new_wrf_stations_in_order = []
+# old_wrf_stations_in_order = []
+#
+# for i in range(len(wrf_station_mapping_new_to_old)):
+#     new_wrf_stations_in_order.append(wrf_station_mapping_new_to_old[i][0])
+#     old_wrf_stations_in_order.append(wrf_station_mapping_new_to_old[i][1])
+#
+# print("New station list")
+# print(new_wrf_stations_in_order)
+# print("Old station list")
+# print(old_wrf_stations_in_order)
+
