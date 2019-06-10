@@ -1,6 +1,8 @@
 import operator
 import collections
 import csv
+import pymysql
+import traceback
 
 from math import acos, cos, sin, radians
 
@@ -75,7 +77,47 @@ def wrf_new_to_wrf_old_station_id_mapping(new_wrf_csv, old_wrf_csv):
         print(wrf_new_to_old_id_mapping)
         wrf_new_to_old_id_mapping_list.append(wrf_new_to_old_id_mapping)
 
-    create_csv('wrf_new_to_old_id_mapping.csv', wrf_new_to_old_id_mapping_list)
+    create_csv('wrf_new_to_old_station_id_mapping.csv', wrf_new_to_old_id_mapping_list)
 
 
-wrf_new_to_wrf_old_station_id_mapping(new_wrf_csv="wrf_stations.csv", old_wrf_csv="outdated_wrf_stations.csv")
+# wrf_new_to_wrf_old_station_id_mapping(new_wrf_csv="wrf_stations.csv", old_wrf_csv="outdated_wrf_stations.csv")
+
+def curw_fcst_new_to_old_hash_id_mapping():
+
+    curw_fcst_new_to_old_hash_id_mapping_list = [['new_hash_id', 'old_hash_id']]
+
+    try:
+
+        # Connect to the database
+        connection = pymysql.connect(host='35.230.102.148',
+                user='root',
+                password='cfcwm07',
+                db='curw_fcst',
+                cursorclass=pymysql.cursors.DictCursor)
+
+        for i in range(8):  # source id
+
+            old_hash_ids = read_csv('old_source{}_run.csv'.format(i+1))
+            # id,sim_tag,start_date,end_date,station,source,variable,unit
+
+            for old_index in range(len(old_hash_ids)):
+                # Extract station ids
+                with connection.cursor() as cursor1:
+                    sql_statement = "SELECT `id` FROM `run` WHERE `source`=%s AND `station`=%s AND " \
+                                    "`sim_tag`='evening_18hrs' AND `variable`=1 AND `unit`=1;"
+                    cursor1.execute(sql_statement, (old_hash_ids[old_index][5], old_hash_ids[old_index][4]))
+                    new_id = cursor1.fetchone()['id']
+
+                    print([new_id, old_hash_ids[old_index][0]])
+                    curw_fcst_new_to_old_hash_id_mapping_list.append([new_id, old_hash_ids[old_index][0]])
+
+        create_csv('curw_fcst_new_to_old_hash_id_mapping.csv', curw_fcst_new_to_old_hash_id_mapping_list)
+
+    except Exception as ex:
+        traceback.print_exc()
+    finally:
+        connection.close()
+
+
+curw_fcst_new_to_old_hash_id_mapping()
+

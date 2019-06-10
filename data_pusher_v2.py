@@ -5,17 +5,15 @@ import os
 import json
 from datetime import datetime, timedelta
 import time
-from pymysql import IntegrityError
 import paramiko
 
-from db_adapter.base import get_Pool
+from db_adapter.base import get_Pool, destroy_Pool
 
 from db_adapter.curw_fcst.source import get_source_id, add_source
 from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
-from db_adapter.exceptions import DuplicateEntryError
 
 from logger import logger
 
@@ -84,11 +82,7 @@ def push_rainfall_to_db(ts, ts_data):
     """
 
     try:
-        ts.insert_data(ts_data, True) # upsert True
-    # except DuplicateEntryError:
-    #     logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
-    #     logger.info("For the meta data : {}".format(ts_run))
-    #     pass
+        ts.insert_data(ts_data, True)  # upsert True
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
         traceback.print_exc()
@@ -288,15 +282,6 @@ if __name__=="__main__":
 
         wrf_v3_stations = get_wrf_stations(pool)
 
-        # # Retrieve db version.
-        # conn = pool.get_conn()
-        # with conn.cursor() as cursor:
-        #     cursor.execute("SELECT VERSION()")
-        #     data = cursor.fetchone()
-        #     logger.info("Database version : %s " % data)
-        # if conn is not None:
-        #     pool.release(conn)
-
         variable_id = get_variable_id(pool=pool, variable=variable)
         unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
@@ -329,16 +314,7 @@ if __name__=="__main__":
                 print('Net CDF file reading error.')
                 traceback.print_exc()
 
-        # try:
-        #     fgt = datetime_utc_to_lk(datetime.now(), shift_mins=0).strftime('%Y-%m-%d %H:%M:%S')
-        #     ts.update_fgt(scheduled_date=scheduled_date, fgt=fgt)
-        # except Exception as e:
-        #         logger.error('Exception occurred while updating fgt')
-        #         print('Exception occurred while updating fgt')
-        #         traceback.print_exc()
-
-        pool.destroy()
-
+        destroy_Pool(pool)
     except Exception as e:
         logger.error('JSON config data loading error.')
         print('JSON config data loading error.')
@@ -348,4 +324,3 @@ if __name__=="__main__":
         gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command)
         logger.info("Process finished.")
         print("Process finished.")
-        exit(0)

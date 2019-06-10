@@ -34,7 +34,7 @@ def update_station_name_in_run_table():
         connection.close()
 
 
-# wrf_station_mapping_new_to_old = read_csv('wrf_new_to_old_id_mapping.csv')
+# wrf_station_mapping_new_to_old = read_csv('wrf_new_to_old_station_id_mapping.csv')
 # new_wrf_stations_in_order = []
 # old_wrf_stations_in_order = []
 #
@@ -46,4 +46,6 @@ def update_station_name_in_run_table():
 # print(new_wrf_stations_in_order)
 # print("Old station list")
 # print(old_wrf_stations_in_order)
+
+
 
