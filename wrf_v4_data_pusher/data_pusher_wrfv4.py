@@ -331,7 +331,7 @@ if __name__=="__main__":
     finally:
         logger.info("Generate rfield files.")
         gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command1)
-        logger.info("Generate rfield animations.")
+        logger.info("Generate d03 rfield files")
         gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command2)
         logger.info("Process finished.")
         print("Process finished.")
