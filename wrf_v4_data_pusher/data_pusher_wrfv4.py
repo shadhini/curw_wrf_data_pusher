@@ -116,7 +116,6 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
     if not os.path.exists(rainnc_net_cdf_file_path):
         logger.warning('no rainnc netcdf')
-        print('no rainnc netcdf')
     else:
 
         """
@@ -135,7 +134,6 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
         lat_min = lats[0].item()
         lon_max = lons[-1].item()
         lat_max = lats[-1].item()
-        print('[lon_min, lat_min, lon_max, lat_max] :', [lon_min, lat_min, lon_max, lat_max])
 
         lat_inds = np.where((lats >= lat_min) & (lats <= lat_max))
         lon_inds = np.where((lons >= lon_min) & (lons <= lon_max))
@@ -175,11 +173,9 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     station_id = get_station_id(pool=pool, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
 
                 tms_id = ts.get_timeseries_id_if_exists(tms_meta)
-                logger.info("Existing timeseries id: {}".format(tms_id))
 
                 if tms_id is None:
                     tms_id = ts.generate_timeseries_id(tms_meta)
-                    logger.info('HASH SHA256 created: {}'.format(tms_id))
 
                     run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id, unit_id)
                     try:
@@ -319,14 +315,12 @@ if __name__=="__main__":
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
             except Exception as e:
                 logger.error("Net CDF file reading error.")
-                print('Net CDF file reading error.')
                 traceback.print_exc()
 
         destroy_Pool(pool)
 
     except Exception as e:
         logger.error('JSON config data loading error.')
-        print('JSON config data loading error.')
         traceback.print_exc()
     finally:
         logger.info("Generate rfield files.")
@@ -334,4 +328,3 @@ if __name__=="__main__":
         logger.info("Generate d03 rfield files")
         gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command2)
         logger.info("Process finished.")
-        print("Process finished.")
