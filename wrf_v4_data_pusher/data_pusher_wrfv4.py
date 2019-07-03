@@ -177,9 +177,18 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                 if tms_id is None:
                     tms_id = ts.generate_timeseries_id(tms_meta)
 
-                    run = (tms_id, tms_meta['sim_tag'], start_date, end_date, station_id, source_id, variable_id, unit_id)
+                    run_meta = {
+                            'tms_id'     : tms_id,
+                            'sim_tag'    : tms_meta['sim_tag'],
+                            'start_date' : start_date,
+                            'end_date'   : end_date,
+                            'station_id' : station_id,
+                            'source_id'  : source_id,
+                            'unit_id'    : unit_id,
+                            'variable_id': variable_id
+                            }
                     try:
-                        ts.insert_run(run)
+                        ts.insert_run(run_meta)
                     except Exception:
                         logger.error("Exception occurred while inserting run entry {}".format(run))
                         traceback.print_exc()
