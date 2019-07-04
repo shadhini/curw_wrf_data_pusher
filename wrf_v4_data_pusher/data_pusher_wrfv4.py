@@ -14,6 +14,7 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
+from db_adapter.constants import CURW_FCST_DATABASE, CURW_FCST_PASSWORD, CURW_FCST_USERNAME, CURW_FCST_PORT, CURW_FCST_HOST
 
 from logger import logger
 
@@ -82,11 +83,12 @@ def push_rainfall_to_db(ts, ts_data):
     """
 
     try:
-        ts.insert_data(ts_data, True) # upsert True
+        ts.insert_formatted_data(ts_data, True) # upsert True
     # except DuplicateEntryError:
     #     logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
     #     logger.info("For the meta data : {}".format(ts_run))
     #     pass
+        logger.info("Timeseries inserted")
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
         traceback.print_exc()
@@ -167,6 +169,8 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
                 station_id = wrf_v3_stations.get(station_prefix)
 
+                logger.info("Insert timeseries for {}".format(station_prefix))
+
                 if station_id is None:
                     add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
                             description="WRF point", station_type=StationEnum.WRF)
@@ -190,7 +194,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     try:
                         ts.insert_run(run_meta)
                     except Exception:
-                        logger.error("Exception occurred while inserting run entry {}".format(run))
+                        logger.error("Exception occurred while inserting run entry {}".format(run_meta))
                         traceback.print_exc()
                 else:
                     ts.update_latest_fgt(id_=tms_id, fgt=fgt)
@@ -266,11 +270,11 @@ if __name__=="__main__":
         variable = read_attribute_from_config_file('variable', config)
 
         # connection params
-        host = read_attribute_from_config_file('host', config)
-        user = read_attribute_from_config_file('user', config)
-        password = read_attribute_from_config_file('password', config)
-        db = read_attribute_from_config_file('db', config)
-        port = read_attribute_from_config_file('port', config)
+        # host = read_attribute_from_config_file('host', config)
+        # user = read_attribute_from_config_file('user', config)
+        # password = read_attribute_from_config_file('password', config)
+        # db = read_attribute_from_config_file('db', config)
+        # port = read_attribute_from_config_file('port', config)
 
         # rfield params
         rfield_host = read_attribute_from_config_file('rfield_host', config)
@@ -291,7 +295,8 @@ if __name__=="__main__":
 
         output_dir = os.path.join(wrf_dir, daily_dir)
 
-        pool = get_Pool(host=host, port=port, user=user, password=password, db=db)
+        pool = get_Pool(host=CURW_FCST_HOST, port=CURW_FCST_PORT, user=CURW_FCST_USERNAME, password=CURW_FCST_PASSWORD,
+                db=CURW_FCST_DATABASE)
 
         wrf_v3_stations = get_wrf_stations(pool)
 

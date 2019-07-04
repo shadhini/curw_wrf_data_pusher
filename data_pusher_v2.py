@@ -83,7 +83,7 @@ def push_rainfall_to_db(ts, ts_data):
     """
 
     try:
-        ts.insert_data(ts_data, True)  # upsert True
+        ts.insert_formatted_data(ts_data, True)  # upsert True
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
         traceback.print_exc()
@@ -188,7 +188,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     try:
                         ts.insert_run(run_meta)
                     except Exception:
-                        logger.error("Exception occurred while inserting run entry {}".format(run))
+                        logger.error("Exception occurred while inserting run entry {}".format(run_meta))
                         traceback.print_exc()
                 else:
                     ts.update_latest_fgt(id_=tms_id, fgt=fgt)
@@ -319,7 +319,7 @@ if __name__=="__main__":
                         source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
             except Exception as e:
                 logger.error("Net CDF file reading error.")
-                traceback.print_exc()
+                logger.error(traceback.print_exc())
 
         destroy_Pool(pool)
     except Exception as e:
