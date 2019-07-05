@@ -74,7 +74,7 @@ def get_file_last_modified_time(file_path):
     return time.strftime('%Y-%m-%d %H:%M:%S', modified_time)
 
 
-def push_rainfall_to_db(ts, ts_data):
+def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
     """
 
     :param ts: timeseries class instance
@@ -84,11 +84,7 @@ def push_rainfall_to_db(ts, ts_data):
 
     try:
         ts.insert_formatted_data(ts_data, True) # upsert True
-    # except DuplicateEntryError:
-    #     logger.info("Timseries id already exists in the database : {}".format(ts_run[0]))
-    #     logger.info("For the meta data : {}".format(ts_run))
-    #     pass
-        logger.info("Timeseries inserted")
+        ts.update_latest_fgt(id_=tms_id, fgt=fgt)
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
         traceback.print_exc()
@@ -169,8 +165,6 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
                 station_id = wrf_v3_stations.get(station_prefix)
 
-                logger.info("Insert timeseries for {}".format(station_prefix))
-
                 if station_id is None:
                     add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
                             description="WRF point", station_type=StationEnum.WRF)
@@ -196,8 +190,6 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     except Exception:
                         logger.error("Exception occurred while inserting run entry {}".format(run_meta))
                         traceback.print_exc()
-                else:
-                    ts.update_latest_fgt(id_=tms_id, fgt=fgt)
 
                 data_list = []
                 # generate timeseries for each station
@@ -207,7 +199,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                     t = datetime_utc_to_lk(ts_time, shift_mins=0)
                     data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
 
-                push_rainfall_to_db(ts=ts, ts_data=data_list)
+                push_rainfall_to_db(ts=ts, ts_data=data_list, tms_id=tms_id, fgt=fgt)
 
 
 if __name__=="__main__":
