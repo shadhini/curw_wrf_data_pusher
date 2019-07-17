@@ -3,8 +3,8 @@
 # Print execution date time
 echo `date`
 
-echo "Changing into ~/wrf_v4_data_pusher"
-cd /home/uwcc-admin/wrf_v4_data_pusher
+echo "Changing into ~/wrf_v3_data_pusher"
+cd /home/uwcc-admin/wrf_v3_data_pusher
 echo "Inside `pwd`"
 
 
@@ -17,10 +17,10 @@ fi
 
 # Activate venv.
 echo "Activating venv python3 virtual environment."
-source venv/bin/activate
+source ../venv/bin/activate
 
 # Install dependencies using pip.
-if [ ! -f "wrf_v4_data_pusher.log" ]
+if [ ! -f "wrf_v3_data_pusher.log" ]
 then
     echo "Installing numpy"
     pip install numpy
@@ -32,16 +32,18 @@ then
     pip install PyMySQL
     echo "Installing PyYAML"
     pip install PyYAML
+    echo "Installing paramiko"
+    pip install paramiko
     echo "Installing datalayer"
 #    pip install git+https://github.com/shadhini/curw_db_adapter.git -U
     pip install git+https://github.com/shadhini/curw_db_adapter.git
 fi
 
-# Push WRFv4 data into the database
-echo "Running scripts to push wrf v4 data. Logs Available in wrf_v4_data_pusher.log file."
-python wrf_data_pusher.py >> wrf_v4_data_pusher.log 2>&1
+# Push WRFv3 data into the database
+echo "Running wrf_v3_data_pusher.py. Logs Available in wrf_v3_data_pusher.log file."
+python data_pusher_v2.py >> wrf_v3_data_pusher.log 2>&1
+
 
 # Deactivating virtual environment
 echo "Deactivating virtual environment"
 deactivate
-

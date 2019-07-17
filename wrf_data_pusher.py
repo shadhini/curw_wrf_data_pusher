@@ -96,7 +96,7 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
 
 
 def read_netcdf_file(pool, rainnc_net_cdf_file_path,
-                     source_id, variable_id, unit_id, tms_meta, fgt):
+                     source_id, variable_id, unit_id, tms_meta):
     """
 
     :param pool: database connection pool
@@ -118,7 +118,10 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
 
         """
         RAINNC netcdf data extraction
+        
         """
+        fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
+
         nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
 
         time_unit_info = nnc_fid.variables['XTIME'].units
@@ -191,6 +194,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                         logger.error("Exception occurred while inserting run entry {}".format(run_meta))
                         traceback.print_exc()
 
+
                 data_list = []
                 # generate timeseries for each station
                 for i in range(len(diff)):
@@ -261,31 +265,15 @@ if __name__=="__main__":
         # variable details
         variable = read_attribute_from_config_file('variable', config)
 
-        # connection params
-        # host = read_attribute_from_config_file('host', config)
-        # user = read_attribute_from_config_file('user', config)
-        # password = read_attribute_from_config_file('password', config)
-        # db = read_attribute_from_config_file('db', config)
-        # port = read_attribute_from_config_file('port', config)
-
         # rfield params
         rfield_host = read_attribute_from_config_file('rfield_host', config)
         rfield_user = read_attribute_from_config_file('rfield_user', config)
         rfield_key = read_attribute_from_config_file('rfield_key', config)
-        rfield_command1 = read_attribute_from_config_file('rfield_command1', config)
-        rfield_command2 = read_attribute_from_config_file('rfield_command2', config)
 
         if 'start_date' in config and (config['start_date']!=""):
-            run_date_str = config['start_date']
-            # fgt = (datetime.strptime(run_date_str, '%Y-%m-%d') + timedelta(days=1)) \
-            #     .strftime('%Y-%m-%d 23:45:00')
+            dates = config['start_date']
         else:
-            run_date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            # fgt = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-
-        daily_dir = 'STATIONS_{}'.format(run_date_str)
-
-        output_dir = os.path.join(wrf_dir, daily_dir)
+            dates = [(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')]
 
         pool = get_Pool(host=CURW_FCST_HOST, port=CURW_FCST_PORT, user=CURW_FCST_USERNAME, password=CURW_FCST_PASSWORD,
                 db=CURW_FCST_DATABASE)
@@ -296,32 +284,55 @@ if __name__=="__main__":
         unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
         for wrf_model in wrf_model_list:
-            rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
-            rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
-            logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+            for date in dates:
+                run_date_str = date
+                daily_dir = 'STATIONS_{}'.format(run_date_str)
 
-            fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
+                output_dir = os.path.join(wrf_dir, daily_dir)
+                rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
-            sim_tag = 'evening_18hrs'
-            source_name = "{}_{}".format(model, wrf_model)
-            source_id = get_source_id(pool=pool, model=source_name, version=version)
+                rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
+                logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
 
-            tms_meta = {
-                    'sim_tag'       : sim_tag,
-                    'model'         : source_name,
-                    'version'       : version,
-                    'variable'      : variable,
-                    'unit'          : unit,
-                    'unit_type'     : unit_type.value
-                    }
+                sim_tag = 'evening_18hrs'
+                source_name = "{}_{}".format(model, wrf_model)
+                source_id = get_source_id(pool=pool, model=source_name, version=version)
 
-            try:
-                read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-                        source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta, fgt=fgt)
-            except Exception as e:
-                logger.error("Net CDF file reading error.")
-                traceback.print_exc()
+                tms_meta = {
+                        'sim_tag'       : sim_tag,
+                        'model'         : source_name,
+                        'version'       : version,
+                        'variable'      : variable,
+                        'unit'          : unit,
+                        'unit_type'     : unit_type.value
+                        }
+
+                try:
+                    read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
+                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
+                    if date == dates[-1]:
+                        try:
+                            #   "rfield_command1": "nohup /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
+                            rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
+                                                          "gen_rfield_kelani_basin.py -m {} -v {} &> " \
+                                                          "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
+                                    version)
+                            rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
+                                                 "gen_rfield_d03.py -m {} -v {} &> " \
+                                                 "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
+    
+                            logger.info("Generate kelani basin rfield files.")
+                            gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user,
+                                    command=rfield_command_kelani_basin)
+                            logger.info("Generate d03 rfield files")
+                            gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command_d03)
+                        except Exception as e:
+                            logger.error("Exception occurred while generating rfields.")
+
+                except Exception as e:
+                    logger.error("Net CDF file reading error.")
+                    traceback.print_exc()
 
         destroy_Pool(pool)
 
@@ -329,8 +340,4 @@ if __name__=="__main__":
         logger.error('JSON config data loading error.')
         traceback.print_exc()
     finally:
-        logger.info("Generate rfield files.")
-        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command1)
-        logger.info("Generate d03 rfield files")
-        gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command2)
         logger.info("Process finished.")

@@ -17,7 +17,7 @@ fi
 
 # Activate venv.
 echo "Activating venv python3 virtual environment."
-source venv/bin/activate
+source ../venv/bin/activate
 
 # Install dependencies using pip.
 if [ ! -f "wrf_v3_data_pusher.log" ]
