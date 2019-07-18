@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 import time
 import paramiko
+import multiprocessing as mp
 
 from db_adapter.base import get_Pool, destroy_Pool
 
@@ -14,13 +15,16 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
-from db_adapter.constants import CURW_FCST_DATABASE, CURW_FCST_PASSWORD, CURW_FCST_USERNAME, CURW_FCST_PORT, CURW_FCST_HOST
+from db_adapter.constants import (
+    CURW_FCST_DATABASE, CURW_FCST_PASSWORD, CURW_FCST_USERNAME, CURW_FCST_PORT,
+    CURW_FCST_HOST,
+    )
 
 from logger import logger
 
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
-wrf_v3_stations = {}
+wrf_v3_stations = { }
 
 
 def read_attribute_from_config_file(attribute, config):
@@ -67,7 +71,6 @@ def get_per_time_slot_values(prcp):
 
 
 def get_file_last_modified_time(file_path):
-
     # returns local time (UTC + 5 30)
     modified_time = time.gmtime(os.path.getmtime(file_path) + 19800)
 
@@ -83,7 +86,7 @@ def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
     """
 
     try:
-        ts.insert_formatted_data(ts_data, True) # upsert True
+        ts.insert_formatted_data(ts_data, True)  # upsert True
         ts.update_latest_fgt(id_=tms_id, fgt=fgt)
     except Exception:
         logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
@@ -95,8 +98,7 @@ def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
     return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
-def read_netcdf_file(pool, rainnc_net_cdf_file_path,
-                     source_id, variable_id, unit_id, tms_meta):
+def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
     """
 
     :param pool: database connection pool
@@ -184,9 +186,9 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                             'start_date' : start_date,
                             'end_date'   : end_date,
                             'station_id' : station_id,
-                            'source_id'  : source_id,
-                            'unit_id'    : unit_id,
-                            'variable_id': variable_id
+                            'source_id'  : tms_meta['source_id'],
+                            'unit_id'    : tms_meta['unit_id'],
+                            'variable_id': tms_meta['variable_id']
                             }
                     try:
                         ts.insert_run(run_meta)
@@ -194,16 +196,59 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path,
                         logger.error("Exception occurred while inserting run entry {}".format(run_meta))
                         traceback.print_exc()
 
-
                 data_list = []
                 # generate timeseries for each station
                 for i in range(len(diff)):
                     ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
-                            minutes=times[i+1].item())
+                            minutes=times[i + 1].item())
                     t = datetime_utc_to_lk(ts_time, shift_mins=0)
                     data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
 
                 push_rainfall_to_db(ts=ts, ts_data=data_list, tms_id=tms_id, fgt=fgt)
+
+
+def extract_wrf_data(wrf_model, config_data, tms_meta):
+    for date in config_data['dates']:
+        run_date_str = date
+        daily_dir = 'STATIONS_{}'.format(run_date_str)
+
+        output_dir = os.path.join(config_data['wrf_dir'], daily_dir)
+        rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+
+        rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
+        logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+
+        source_name = "{}_{}".format(config_data['model'], wrf_model)
+        source_id = get_source_id(pool=pool, model=source_name, version=config_data['version'])
+
+        tms_meta['model'] = source_name
+        tms_meta['source_id'] = source_id
+
+        try:
+            read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
+            if date==dates[-1]:
+                try:
+                    # "rfield_command1": "nohup /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
+                    rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
+                                                  "gen_rfield_kelani_basin.py -m {} -v {} &> " \
+                                                  "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
+                            version)
+                    rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
+                                         "gen_rfield_d03.py -m {} -v {} &> " \
+                                         "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
+
+                    logger.info("Generate kelani basin rfield files.")
+                    gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
+                            command=rfield_command_kelani_basin)
+                    logger.info("Generate d03 rfield files")
+                    gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
+                            command=rfield_command_d03)
+                except Exception as e:
+                    logger.error("Exception occurred while generating rfields.")
+
+        except Exception as e:
+            logger.error("Net CDF file reading error.")
+            traceback.print_exc()
 
 
 if __name__=="__main__":
@@ -216,13 +261,7 @@ if __name__=="__main__":
       "version": "v3",
       "wrf_model_list": "A,C,E,SE",
 
-      "start_date": "2019-03-24",
-
-      "host": "127.0.0.1",
-      "user": "root",
-      "password": "password",
-      "db": "curw_fcst",
-      "port": 3306,
+      "start_date": ["2019-04-18","2019-04-17"],
 
       "unit": "mm",
       "unit_type": "Accumulative",
@@ -233,7 +272,6 @@ if __name__=="__main__":
     run_date_str :  2019-03-23
     daily_dir :  STATIONS_2019-03-23
     output_dir :  /mnt/disks/wrf-mod/STATIONS_2019-03-23
-    sim_tag :  WRFv3_A
     rainnc_net_cdf_file :  d03_RAINNC_2019-03-23_A.nc
     rainnc_net_cdf_file_path :  /mnt/disks/wrf-mod/STATIONS_2019-03-23/d03_RAINNC_2019-03-23_A.nc    
 
@@ -257,6 +295,9 @@ if __name__=="__main__":
         version = read_attribute_from_config_file('version', config)
         wrf_model_list = read_attribute_from_config_file('wrf_model_list', config)
         wrf_model_list = wrf_model_list.split(',')
+
+        # sim_tag
+        sim_tag = read_attribute_from_config_file('sim_tag', config)
 
         # unit details
         unit = read_attribute_from_config_file('unit', config)
@@ -283,56 +324,31 @@ if __name__=="__main__":
         variable_id = get_variable_id(pool=pool, variable=variable)
         unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
 
-        for wrf_model in wrf_model_list:
+        tms_meta = {
+                'sim_tag'    : sim_tag,
+                'version'    : version,
+                'variable'   : variable,
+                'unit'       : unit,
+                'unit_type'  : unit_type.value,
+                'variable_id': variable_id,
+                'unit_id'    : unit_id
+                }
 
-            for date in dates:
-                run_date_str = date
-                daily_dir = 'STATIONS_{}'.format(run_date_str)
+        config_data = {
+                'model'      : model,
+                'version'    : version,
+                'dates'      : dates,
+                'wrf_dir'    : wrf_dir,
+                'rfield_host': rfield_host,
+                'rfield_key' : rfield_key,
+                'rfield_user': rfield_user
+                }
 
-                output_dir = os.path.join(wrf_dir, daily_dir)
-                rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+        mp_pool = mp.Pool(mp.cpu_count())
 
-                rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
-                logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
+        mp_pool.starmap_async(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list])
 
-                sim_tag = 'evening_18hrs'
-                source_name = "{}_{}".format(model, wrf_model)
-                source_id = get_source_id(pool=pool, model=source_name, version=version)
-
-                tms_meta = {
-                        'sim_tag'       : sim_tag,
-                        'model'         : source_name,
-                        'version'       : version,
-                        'variable'      : variable,
-                        'unit'          : unit,
-                        'unit_type'     : unit_type.value
-                        }
-
-                try:
-                    read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path,
-                            source_id=source_id, variable_id=variable_id, unit_id=unit_id, tms_meta=tms_meta)
-                    if date == dates[-1]:
-                        try:
-                            #   "rfield_command1": "nohup /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
-                            rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                                                          "gen_rfield_kelani_basin.py -m {} -v {} &> " \
-                                                          "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
-                                    version)
-                            rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                                                 "gen_rfield_d03.py -m {} -v {} &> " \
-                                                 "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
-    
-                            logger.info("Generate kelani basin rfield files.")
-                            gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user,
-                                    command=rfield_command_kelani_basin)
-                            logger.info("Generate d03 rfield files")
-                            gen_rfield_files(host=rfield_host, key=rfield_key, user=rfield_user, command=rfield_command_d03)
-                        except Exception as e:
-                            logger.error("Exception occurred while generating rfields.")
-
-                except Exception as e:
-                    logger.error("Net CDF file reading error.")
-                    traceback.print_exc()
+        mp_pool.close()
 
         destroy_Pool(pool)
 
