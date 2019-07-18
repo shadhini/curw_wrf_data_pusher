@@ -116,6 +116,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
 
     if not os.path.exists(rainnc_net_cdf_file_path):
         logger.warning('no rainnc netcdf')
+        return
     else:
 
         """
@@ -208,6 +209,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
 
 
 def extract_wrf_data(wrf_model, config_data, tms_meta):
+    print(wrf_model, config_data, tms_meta)
     for date in config_data['dates']:
         run_date_str = date
         daily_dir = 'STATIONS_{}'.format(run_date_str)
@@ -346,7 +348,7 @@ if __name__=="__main__":
 
         mp_pool = mp.Pool(mp.cpu_count())
 
-        mp_pool.starmap_async(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list])
+        mp_pool.starmap(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list])
 
         mp_pool.close()
 
