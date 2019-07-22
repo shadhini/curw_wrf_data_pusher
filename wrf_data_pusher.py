@@ -209,7 +209,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
 
 
 def extract_wrf_data(wrf_model, config_data, tms_meta):
-    print(wrf_model, config_data, tms_meta)
+    logger.info("########################################", wrf_model, "########################################")
     for date in config_data['dates']:
         run_date_str = date
         daily_dir = 'STATIONS_{}'.format(run_date_str)
@@ -230,7 +230,7 @@ def extract_wrf_data(wrf_model, config_data, tms_meta):
             read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
             if date==dates[-1]:
                 try:
-                    # "rfield_command1": "nohup /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
+                    # "rfield_command1": "nohup python /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
                     rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
                                                   "gen_rfield_kelani_basin.py -m {} -v {} &> " \
                                                   "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
@@ -313,10 +313,12 @@ if __name__=="__main__":
         rfield_user = read_attribute_from_config_file('rfield_user', config)
         rfield_key = read_attribute_from_config_file('rfield_key', config)
 
+        dates = []
+
         if 'start_date' in config and (config['start_date']!=""):
             dates = config['start_date']
         else:
-            dates = [(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')]
+            dates.append((datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'))
 
         pool = get_Pool(host=CURW_FCST_HOST, port=CURW_FCST_PORT, user=CURW_FCST_USERNAME, password=CURW_FCST_PASSWORD,
                 db=CURW_FCST_DATABASE)
@@ -348,7 +350,9 @@ if __name__=="__main__":
 
         mp_pool = mp.Pool(mp.cpu_count())
 
-        mp_pool.starmap(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list])
+        results = mp_pool.starmap_async(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list]).get()
+
+        print(results)
 
         mp_pool.close()
 
