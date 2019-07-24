@@ -16,7 +16,7 @@ handlers:
     class: logging.handlers.TimedRotatingFileHandler
     formatter: simple
     level: INFO
-    filename: wrfv3_data_pusher.log
+    filename: wrf_data_pusher.log
     when: D
     interval: 1
 #loggers:
