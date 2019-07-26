@@ -49,19 +49,19 @@ def ssh_command(ssh, command):
         print(line)
 
 
-def gen_rfield_files(host, user, key, command):
+def gen_rfield_files(host, user, key, command, wrf_model):
     try:
         ssh = paramiko.SSHClient()
-        print('Calling paramiko')
+        logger.info("Calling paramiko :: WRF_{}".format(wrf_model))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(hostname=host, username=user, key_filename=key)
 
         ssh_command(ssh, command)
     except Exception as e:
-        print('Connection Failed')
+        logger.error("Connection failed :: WRF_{}".format(wrf_model))
         print(e)
     finally:
-        print("Close connection")
+        logger.info("Connection closed :: WRF_{}".format(wrf_model))
         ssh.close()
 
 
@@ -115,7 +115,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
     """
 
     if not os.path.exists(rainnc_net_cdf_file_path):
-        logger.warning('no rainnc netcdf')
+        logger.warning('no rainnc netcdf :: {}'.format(rainnc_net_cdf_file_path))
         return
     else:
 
@@ -218,7 +218,6 @@ def extract_wrf_data(wrf_model, config_data, tms_meta):
         rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
 
         rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
-        logger.info("rainnc_net_cdf_file_path : {}".format(rainnc_net_cdf_file_path))
 
         source_name = "{}_{}".format(config_data['model'], wrf_model)
         source_id = get_source_id(pool=pool, model=source_name, version=config_data['version'])
@@ -239,17 +238,17 @@ def extract_wrf_data(wrf_model, config_data, tms_meta):
                                          "gen_rfield_d03.py -m {} -v {} &> " \
                                          "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
 
-                    logger.info("Generate kelani basin rfield files.")
+                    logger.info("Generate WRF_{} kelani basin rfield files.".format(wrf_model))
                     gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-                            command=rfield_command_kelani_basin)
-                    logger.info("Generate d03 rfield files")
+                            command=rfield_command_kelani_basin, wrf_model=wrf_model)
+                    logger.info("Generate WRF_{} d03 rfield files.".format(wrf_model))
                     gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-                            command=rfield_command_d03)
+                            command=rfield_command_d03, wrf_model=wrf_model)
                 except Exception as e:
-                    logger.error("Exception occurred while generating rfields.")
+                    logger.error("Exception occurred while generating rfields for WRF_{}.".format(wrf_model))
 
         except Exception as e:
-            logger.error("Net CDF file reading error.")
+            logger.error("WRF_{} netcdf file reading error.".format(wrf_model))
             traceback.print_exc()
 
 
@@ -262,14 +261,20 @@ if __name__=="__main__":
       "model": "WRF",
       "version": "v3",
       "wrf_model_list": "A,C,E,SE",
-
+    
       "start_date": ["2019-04-18","2019-04-17"],
-
+    
+      "sim_tag": "evening_18hrs",
+    
       "unit": "mm",
       "unit_type": "Accumulative",
-
-      "variable": "Precipitation"
+      "variable": "Precipitation",
+      
+      "rfield_host": "104.198.0.87",
+      "rfield_user": "uwcc-admin",
+      "rfield_key": "/home/uwcc-admin/.ssh/uwcc-admin"
     }
+
 
     run_date_str :  2019-03-23
     daily_dir :  STATIONS_2019-03-23
@@ -352,14 +357,14 @@ if __name__=="__main__":
 
         results = mp_pool.starmap_async(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list]).get()
 
-        print(results)
+        print("results: ", results)
 
         mp_pool.close()
 
         destroy_Pool(pool)
 
     except Exception as e:
-        logger.error('JSON config data loading error.')
+        logger.error('Config data or meta data loading error.')
         traceback.print_exc()
     finally:
         logger.info("Process finished.")
