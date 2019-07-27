@@ -209,7 +209,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
 
 
 def extract_wrf_data(wrf_model, config_data, tms_meta):
-    logger.info("########################################", wrf_model, "########################################")
+    logger.info("######################################## {} #######################################".format(wrf_model))
     for date in config_data['dates']:
         run_date_str = date
         daily_dir = 'STATIONS_{}'.format(run_date_str)
