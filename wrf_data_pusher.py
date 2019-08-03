@@ -227,25 +227,25 @@ def extract_wrf_data(wrf_model, config_data, tms_meta):
 
         try:
             read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
-            if date==dates[-1]:
-                try:
-                    # "rfield_command1": "nohup python /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
-                    rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                                                  "gen_rfield_kelani_basin.py -m {} -v {} &> " \
-                                                  "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
-                            version)
-                    rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                                         "gen_rfield_d03.py -m {} -v {} &> " \
-                                         "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
-
-                    logger.info("Generate WRF_{} kelani basin rfield files.".format(wrf_model))
-                    gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-                            command=rfield_command_kelani_basin, wrf_model=wrf_model)
-                    logger.info("Generate WRF_{} d03 rfield files.".format(wrf_model))
-                    gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-                            command=rfield_command_d03, wrf_model=wrf_model)
-                except Exception as e:
-                    logger.error("Exception occurred while generating rfields for WRF_{}.".format(wrf_model))
+            # if date==dates[-1]:
+            #     try:
+            #         # "rfield_command1": "nohup python /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
+            #         rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
+            #                                       "gen_rfield_kelani_basin.py -m {} -v {} &> " \
+            #                                       "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
+            #                 version)
+            #         rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
+            #                              "gen_rfield_d03.py -m {} -v {} &> " \
+            #                              "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
+            #
+            #         logger.info("Generate WRF_{} kelani basin rfield files.".format(wrf_model))
+            #         gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
+            #                 command=rfield_command_kelani_basin, wrf_model=wrf_model)
+            #         logger.info("Generate WRF_{} d03 rfield files.".format(wrf_model))
+            #         gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
+            #                 command=rfield_command_d03, wrf_model=wrf_model)
+            #     except Exception as e:
+            #         logger.error("Exception occurred while generating rfields for WRF_{}.".format(wrf_model))
 
         except Exception as e:
             logger.error("WRF_{} netcdf file reading error.".format(wrf_model))
