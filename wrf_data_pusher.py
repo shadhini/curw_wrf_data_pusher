@@ -43,26 +43,70 @@ def read_attribute_from_config_file(attribute, config):
 def ssh_command(ssh, command):
     ssh.invoke_shell()
     stdin, stdout, stderr = ssh.exec_command(command)
-    for line in stdout.readlines():
-        print(line)
-    for line in stderr.readlines():
-        print(line)
+    if stdout.channel.recv_exit_status() is not 0:
+        return False
+    return True
+    # for line in stdout.readlines():
+    #     logger.info(line)
+    # for line in stderr.readlines():
+    #     logger.error(line)
 
 
-def gen_rfield_files(host, user, key, command, wrf_model):
+def run_remote_command(host, user, key, command):
+    """
+    :return:  True if successful, False otherwise
+    """
     try:
         ssh = paramiko.SSHClient()
-        logger.info("Calling paramiko :: WRF_{}".format(wrf_model))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(hostname=host, username=user, key_filename=key)
 
-        ssh_command(ssh, command)
+        return ssh_command(ssh, command)
     except Exception as e:
-        logger.error("Connection failed :: WRF_{}".format(wrf_model))
-        print(e)
+        msg = "Connection failed :: {} :: {}".format(host, command.split('2>&1')[0])
+        logger.error(msg)
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)]=msg
+        return False
     finally:
-        logger.info("Connection closed :: WRF_{}".format(wrf_model))
         ssh.close()
+
+
+def gen_kelani_basin_rfields(source_names, version, sim_tag, rfield_host, rfield_key, rfield_user):
+    """
+    Generate kelani basin rfields
+    :param source_names: e.g.: WRF_A,WRF_C
+    :param version: e.g.: v4.0
+    :param rfield_host:
+    :param sim_tag: e.g.: "evening_18hrs"
+    :param rfield_key:
+    :param rfield_user:
+    :return: True if successful, False otherwise
+    """
+    rfield_command_kelani_basin = "nohup ./rfield_extractor/gen_rfield_kelani_basin_parallelized.py -m {} -v {} -s {} " \
+                                  "2>&1 ./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+
+    logger.info("Generate {} kelani basin rfield files.".format(source_names))
+    return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
+                     command=rfield_command_kelani_basin)
+
+
+def gen_all_d03_rfields(source_names, version, sim_tag, rfield_host, rfield_key, rfield_user):
+    """
+       Generate d03 rfields for SL extent
+       :param source_names: e.g.: WRF_A,WRF_C
+       :param version: e.g.: v4.0
+       :param sim_tag: e.g.: "evening_18hrs"
+       :param rfield_host:
+       :param rfield_key:
+       :param rfield_user:
+       :return:  True if successful, False otherwise
+    """
+    rfield_command_d03 = "nohup  ./rfield_extractor/gen_rfield_d03_parallelized.py -m {} -v {} -s {} 2>&1 " \
+                         "./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+
+    logger.info("Generate {} d03 rfield files.".format(source_names))
+    return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
+                     command=rfield_command_d03)
 
 
 def get_per_time_slot_values(prcp):
@@ -227,25 +271,6 @@ def extract_wrf_data(wrf_model, config_data, tms_meta):
 
         try:
             read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
-            # if date==dates[-1]:
-            #     try:
-            #         # "rfield_command1": "nohup python /home/uwcc-admin/rfield_extractor/gen_rfield_kelani_basin.py -m WRF_A -v v4 &> /home/uwcc-admin/rfield_extractor/nohup.out",
-            #         rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
-            #                                       "gen_rfield_kelani_basin.py -m {} -v {} &> " \
-            #                                       "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name,
-            #                 version)
-            #         rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
-            #                              "gen_rfield_d03.py -m {} -v {} &> " \
-            #                              "/home/uwcc-admin/rfield_extractor/nohup.out".format(source_name, version)
-            #
-            #         logger.info("Generate WRF_{} kelani basin rfield files.".format(wrf_model))
-            #         gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-            #                 command=rfield_command_kelani_basin, wrf_model=wrf_model)
-            #         logger.info("Generate WRF_{} d03 rfield files.".format(wrf_model))
-            #         gen_rfield_files(host=config_data['rfield_host'], key=config_data['rfield_key'], user=config_data['rfield_user'],
-            #                 command=rfield_command_d03, wrf_model=wrf_model)
-            #     except Exception as e:
-            #         logger.error("Exception occurred while generating rfields for WRF_{}.".format(wrf_model))
 
         except Exception as e:
             logger.error("WRF_{} netcdf file reading error.".format(wrf_model))
@@ -347,10 +372,7 @@ if __name__=="__main__":
                 'model'      : model,
                 'version'    : version,
                 'dates'      : dates,
-                'wrf_dir'    : wrf_dir,
-                'rfield_host': rfield_host,
-                'rfield_key' : rfield_key,
-                'rfield_user': rfield_user
+                'wrf_dir'    : wrf_dir
                 }
 
         mp_pool = mp.Pool(mp.cpu_count())
@@ -359,12 +381,25 @@ if __name__=="__main__":
 
         print("results: ", results)
 
-        mp_pool.close()
+        source_list = ""
 
-        destroy_Pool(pool)
+        for wrf_system in wrf_model_list:
+            source_list += "WRF_{},".format(wrf_system)
+
+        source_list = source_list[:-1]
+
+        kelani_basin_rfield_status = gen_kelani_basin_rfields(source_names=source_list, version=version,
+                                                              sim_tag=sim_tag,
+                                                              rfield_host=rfield_host, rfield_key=rfield_key,
+                                                              rfield_user=rfield_user)
+
+        d03_rfield_status = gen_all_d03_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
+                                                rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
 
     except Exception as e:
         logger.error('Config data or meta data loading error.')
         traceback.print_exc()
     finally:
         logger.info("Process finished.")
+        mp_pool.close()
+        destroy_Pool(pool)
