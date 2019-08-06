@@ -15,6 +15,7 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
+from db_adapter.constants import COMMON_DATE_TIME_FORMAT
 from db_adapter.constants import (
     CURW_FCST_DATABASE, CURW_FCST_PASSWORD, CURW_FCST_USERNAME, CURW_FCST_PORT,
     CURW_FCST_HOST,
@@ -40,7 +41,7 @@ def read_attribute_from_config_file(attribute, config):
     else:
         msg = "{} not specified in config file.".format(attribute)
         logger.error(msg)
-        email_content[datetime.now()] = msg
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
         exit(1)
 
 
@@ -85,7 +86,7 @@ def run_remote_command(host, user, key, command):
     except Exception as e:
         msg = "Connection failed :: {} :: {}".format(host, command.split('2>&1')[0])
         logger.error(msg)
-        email_content[datetime.now()]=msg
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)]=msg
         return False
     finally:
         ssh.close()
@@ -102,9 +103,8 @@ def gen_kelani_basin_rfields(source_names, version, sim_tag, rfield_host, rfield
     :param rfield_user:
     :return: True if successful, False otherwise
     """
-    rfield_command_kelani_basin = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                                  "gen_rfield_kelani_basin_parallelized.py -m {} -v {} -s {} 2>&1 " \
-                                  "/home/uwcc-admin/rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+    rfield_command_kelani_basin = "nohup ./rfield_extractor/gen_rfield_kelani_basin_parallelized.py -m {} -v {} -s {} " \
+                                  "2>&1 ./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} kelani basin rfield files.".format(source_names))
     return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
@@ -122,9 +122,8 @@ def gen_all_d03_rfields(source_names, version, sim_tag, rfield_host, rfield_key,
        :param rfield_user:
        :return:  True if successful, False otherwise
     """
-    rfield_command_d03 = "nohup python /home/uwcc-admin/rfield_extractor/" \
-                         "gen_rfield_d03_parallelized.py -m {} -v {} -s {} 2>&1 " \
-                         "/home/uwcc-admin/rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+    rfield_command_d03 = "nohup  ./rfield_extractor/gen_rfield_d03_parallelized.py -m {} -v {} -s {} 2>&1 " \
+                         "./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} d03 rfield files.".format(source_names))
     return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
@@ -146,7 +145,7 @@ def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
         msg = "Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2])
         logger.error(msg)
         traceback.print_exc()
-        email_content[datetime.now()] = msg
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
 
 
 def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
@@ -168,7 +167,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
     if not os.path.exists(rainnc_net_cdf_file_path):
         msg = 'no rainnc netcdf :: {}'.format(rainnc_net_cdf_file_path)
         logger.warning(msg)
-        email_content[datetime.now()] = msg
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
         exit(1)
     else:
 
@@ -265,7 +264,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
             msg = "netcdf file at {} reading error.".format(rainnc_net_cdf_file_path)
             logger.error(msg)
             traceback.print_exc()
-            email_content[datetime.now()] = msg
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
             exit(1)
 
 
@@ -293,7 +292,7 @@ def extract_wrf_data(wrf_system, config_data, tms_meta):
         except Exception:
             msg = "Exception occurred while loading source meta data for WRF_{} from database.".format(wrf_system)
             logger.error(msg)
-            email_content[datetime.now()] = msg
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
             exit(1)
 
         tms_meta['model'] = source_name
@@ -384,7 +383,7 @@ if __name__ == "__main__":
         except Exception:
             msg = "Exception occurred while loading common metadata from database."
             logger.error(msg)
-            email_content[datetime.now()] = msg
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
             exit(1)
 
         tms_meta = {
@@ -423,18 +422,18 @@ if __name__ == "__main__":
                                                 rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
 
         if not kelani_basin_rfield_status:
-            email_content[datetime.now()] = "Kelani basin rfiled generation for {} failed".format(source_list)
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "Kelani basin rfiled generation for {} failed".format(source_list)
 
         d03_rfield_status = gen_all_d03_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
                                                 rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
 
         if not d03_rfield_status:
-            email_content[datetime.now()] = "SL d03 rfiled generation for {} failed".format(source_list)
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "SL d03 rfiled generation for {} failed".format(source_list)
 
     except Exception as e:
         msg = 'Multiprocessing error.'
         logger.error(msg)
-        email_content[datetime.now()] = msg
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
         traceback.print_exc()
     finally:
         mp_pool.close()
