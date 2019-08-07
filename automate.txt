@@ -1,0 +1,1 @@
+take path to the config file as a user input and make the python script self executable with shebang
