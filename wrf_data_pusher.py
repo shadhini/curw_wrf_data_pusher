@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import time
 import paramiko
 import multiprocessing as mp
+import sys
 
 from db_adapter.base import get_Pool, destroy_Pool
 
@@ -15,16 +16,19 @@ from db_adapter.curw_fcst.variable import get_variable_id, add_variable
 from db_adapter.curw_fcst.unit import get_unit_id, add_unit, UnitType
 from db_adapter.curw_fcst.station import StationEnum, get_station_id, add_station, get_wrf_stations
 from db_adapter.curw_fcst.timeseries import Timeseries
+from db_adapter.constants import COMMON_DATE_TIME_FORMAT
 from db_adapter.constants import (
     CURW_FCST_DATABASE, CURW_FCST_PASSWORD, CURW_FCST_USERNAME, CURW_FCST_PORT,
     CURW_FCST_HOST,
     )
 
-from logger import logger
+from db_adapter.logger import logger
 
 SRI_LANKA_EXTENT = [79.5213, 5.91948, 81.879, 9.83506]
 
 wrf_v3_stations = { }
+
+email_content = {}
 
 
 def read_attribute_from_config_file(attribute, config):
@@ -36,8 +40,26 @@ def read_attribute_from_config_file(attribute, config):
     if attribute in config and (config[attribute]!=""):
         return config[attribute]
     else:
-        logger.error("{} not specified in config file.".format(attribute))
-        exit(1)
+        msg = "{} not specified in config file.".format(attribute)
+        logger.error(msg)
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+        sys.exit(1)
+
+
+def get_per_time_slot_values(prcp):
+    per_interval_prcp = (prcp[1:] - prcp[:-1])
+    return per_interval_prcp
+
+
+def get_file_last_modified_time(file_path):
+    # returns local time (UTC + 5 30)
+    modified_time = time.gmtime(os.path.getmtime(file_path) + 19800)
+
+    return time.strftime('%Y-%m-%d %H:%M:%S', modified_time)
+
+
+def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
+    return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
 
 
 def ssh_command(ssh, command):
@@ -82,7 +104,7 @@ def gen_kelani_basin_rfields(source_names, version, sim_tag, rfield_host, rfield
     :param rfield_user:
     :return: True if successful, False otherwise
     """
-    rfield_command_kelani_basin = "nohup ./rfield_extractor/gen_rfield_kelani_basin_parallelized.py -m {} -v {} -s {} " \
+    rfield_command_kelani_basin = "nohup ./rfield_extractor/gen_kelani_basin_rfield.py -m {} -v {} -s {} " \
                                   "2>&1 ./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} kelani basin rfield files.".format(source_names))
@@ -101,24 +123,12 @@ def gen_all_d03_rfields(source_names, version, sim_tag, rfield_host, rfield_key,
        :param rfield_user:
        :return:  True if successful, False otherwise
     """
-    rfield_command_d03 = "nohup  ./rfield_extractor/gen_rfield_d03_parallelized.py -m {} -v {} -s {} 2>&1 " \
+    rfield_command_d03 = "nohup  ./rfield_extractor/gen_SL_d03_rfield.py -m {} -v {} -s {} 2>&1 " \
                          "./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} d03 rfield files.".format(source_names))
     return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
                      command=rfield_command_d03)
-
-
-def get_per_time_slot_values(prcp):
-    per_interval_prcp = (prcp[1:] - prcp[:-1])
-    return per_interval_prcp
-
-
-def get_file_last_modified_time(file_path):
-    # returns local time (UTC + 5 30)
-    modified_time = time.gmtime(os.path.getmtime(file_path) + 19800)
-
-    return time.strftime('%Y-%m-%d %H:%M:%S', modified_time)
 
 
 def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
@@ -133,13 +143,10 @@ def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
         ts.insert_formatted_data(ts_data, True)  # upsert True
         ts.update_latest_fgt(id_=tms_id, fgt=fgt)
     except Exception:
-        logger.error("Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2]))
+        msg = "Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2])
+        logger.error(msg)
         traceback.print_exc()
-        return False
-
-
-def datetime_utc_to_lk(timestamp_utc, shift_mins=0):
-    return timestamp_utc + timedelta(hours=5, minutes=30 + shift_mins)
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
 
 
 def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
@@ -159,153 +166,168 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
     """
 
     if not os.path.exists(rainnc_net_cdf_file_path):
-        logger.warning('no rainnc netcdf :: {}'.format(rainnc_net_cdf_file_path))
-        return
+        msg = 'no rainnc netcdf :: {}'.format(rainnc_net_cdf_file_path)
+        logger.warning(msg)
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+        sys.exit(msg)
     else:
 
-        """
-        RAINNC netcdf data extraction
-        
-        """
-        fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
+        try:
+            """
+            RAINNC netcdf data extraction
+    
+            """
+            fgt = get_file_last_modified_time(rainnc_net_cdf_file_path)
 
-        nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
+            nnc_fid = Dataset(rainnc_net_cdf_file_path, mode='r')
 
-        time_unit_info = nnc_fid.variables['XTIME'].units
+            time_unit_info = nnc_fid.variables['XTIME'].units
 
-        time_unit_info_list = time_unit_info.split(' ')
+            time_unit_info_list = time_unit_info.split(' ')
 
-        lats = nnc_fid.variables['XLAT'][0, :, 0]
-        lons = nnc_fid.variables['XLONG'][0, 0, :]
+            lats = nnc_fid.variables['XLAT'][0, :, 0]
+            lons = nnc_fid.variables['XLONG'][0, 0, :]
 
-        lon_min = lons[0].item()
-        lat_min = lats[0].item()
-        lon_max = lons[-1].item()
-        lat_max = lats[-1].item()
+            lon_min = lons[0].item()
+            lat_min = lats[0].item()
+            lon_max = lons[-1].item()
+            lat_max = lats[-1].item()
 
-        lat_inds = np.where((lats >= lat_min) & (lats <= lat_max))
-        lon_inds = np.where((lons >= lon_min) & (lons <= lon_max))
+            lat_inds = np.where((lats >= lat_min) & (lats <= lat_max))
+            lon_inds = np.where((lons >= lon_min) & (lons <= lon_max))
 
-        rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
+            rainnc = nnc_fid.variables['RAINNC'][:, lat_inds[0], lon_inds[0]]
 
-        times = nnc_fid.variables['XTIME'][:]
+            times = nnc_fid.variables['XTIME'][:]
 
-        start_date = fgt
-        end_date = fgt
+            start_date = fgt
+            end_date = fgt
 
-        nnc_fid.close()
+            nnc_fid.close()
 
-        diff = get_per_time_slot_values(rainnc)
+            diff = get_per_time_slot_values(rainnc)
 
-        width = len(lons)
-        height = len(lats)
+            width = len(lons)
+            height = len(lats)
 
-        ts = Timeseries(pool)
+            ts = Timeseries(pool)
 
-        for y in range(height):
-            for x in range(width):
+            for y in range(height):
+                for x in range(width):
 
-                lat = float('%.6f' % lats[y])
-                lon = float('%.6f' % lons[x])
+                    lat = float('%.6f' % lats[y])
+                    lon = float('%.6f' % lons[x])
 
-                tms_meta['latitude'] = str(lat)
-                tms_meta['longitude'] = str(lon)
+                    tms_meta['latitude'] = str(lat)
+                    tms_meta['longitude'] = str(lon)
 
-                station_prefix = 'wrf_{}_{}'.format(lat, lon)
+                    station_prefix = 'wrf_{}_{}'.format(lat, lon)
 
-                station_id = wrf_v3_stations.get(station_prefix)
+                    station_id = wrf_v3_stations.get(station_prefix)
 
-                if station_id is None:
-                    add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
-                            description="WRF point", station_type=StationEnum.WRF)
-                    station_id = get_station_id(pool=pool, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
+                    if station_id is None:
+                        add_station(pool=pool, name=station_prefix, latitude=lat, longitude=lon,
+                                    description="WRF point", station_type=StationEnum.WRF)
+                        station_id = get_station_id(pool=pool, latitude=lat, longitude=lon, station_type=StationEnum.WRF)
 
-                tms_id = ts.get_timeseries_id_if_exists(tms_meta)
+                    tms_id = ts.get_timeseries_id_if_exists(tms_meta)
 
-                if tms_id is None:
-                    tms_id = ts.generate_timeseries_id(tms_meta)
+                    if tms_id is None:
+                        tms_id = ts.generate_timeseries_id(tms_meta)
 
-                    run_meta = {
-                            'tms_id'     : tms_id,
-                            'sim_tag'    : tms_meta['sim_tag'],
-                            'start_date' : start_date,
-                            'end_date'   : end_date,
-                            'station_id' : station_id,
-                            'source_id'  : tms_meta['source_id'],
-                            'unit_id'    : tms_meta['unit_id'],
+                        run_meta = {
+                            'tms_id': tms_id,
+                            'sim_tag': tms_meta['sim_tag'],
+                            'start_date': start_date,
+                            'end_date': end_date,
+                            'station_id': station_id,
+                            'source_id': tms_meta['source_id'],
+                            'unit_id': tms_meta['unit_id'],
                             'variable_id': tms_meta['variable_id']
-                            }
-                    try:
-                        ts.insert_run(run_meta)
-                    except Exception:
-                        logger.error("Exception occurred while inserting run entry {}".format(run_meta))
-                        traceback.print_exc()
+                        }
+                        try:
+                            ts.insert_run(run_meta)
+                        except Exception:
+                            logger.error("Exception occurred while inserting run entry {}".format(run_meta))
+                            traceback.print_exc()
 
-                data_list = []
-                # generate timeseries for each station
-                for i in range(len(diff)):
-                    ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
+                    data_list = []
+                    # generate timeseries for each station
+                    for i in range(len(diff)):
+                        ts_time = datetime.strptime(time_unit_info_list[2], '%Y-%m-%dT%H:%M:%S') + timedelta(
                             minutes=times[i + 1].item())
-                    t = datetime_utc_to_lk(ts_time, shift_mins=0)
-                    data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
+                        t = datetime_utc_to_lk(ts_time, shift_mins=0)
+                        data_list.append([tms_id, t.strftime('%Y-%m-%d %H:%M:%S'), fgt, float(diff[i, y, x])])
 
-                push_rainfall_to_db(ts=ts, ts_data=data_list, tms_id=tms_id, fgt=fgt)
+                    push_rainfall_to_db(ts=ts, ts_data=data_list, tms_id=tms_id, fgt=fgt)
+            return True
+        except Exception as e:
+            msg = "netcdf file at {} reading error.".format(rainnc_net_cdf_file_path)
+            logger.error(msg)
+            traceback.print_exc()
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+            sys.exit(msg)
 
 
-def extract_wrf_data(wrf_model, config_data, tms_meta):
-    logger.info("######################################## {} #######################################".format(wrf_model))
+def extract_wrf_data(wrf_system, config_data, tms_meta):
+    logger.info(
+        "######################################## {} #######################################".format(wrf_system))
     for date in config_data['dates']:
-        run_date_str = date
-        daily_dir = 'STATIONS_{}'.format(run_date_str)
 
-        output_dir = os.path.join(config_data['wrf_dir'], daily_dir)
-        rainnc_net_cdf_file = 'd03_RAINNC_{}_{}.nc'.format(run_date_str, wrf_model)
+        #     /wrf_nfs/wrf/4.0/18/A/2019-07-30/d03_RAINNC.nc
+
+        output_dir = os.path.join(config_data['wrf_dir'], config_data['version'], config_data['gfs_data_hour'],
+                                  wrf_system, date)
+        rainnc_net_cdf_file = 'd03_RAINNC.nc'
 
         rainnc_net_cdf_file_path = os.path.join(output_dir, rainnc_net_cdf_file)
 
-        source_name = "{}_{}".format(config_data['model'], wrf_model)
-        source_id = get_source_id(pool=pool, model=source_name, version=config_data['version'])
+        try:
+            source_name = "{}_{}".format(config_data['model'], wrf_system)
+            source_id = get_source_id(pool=pool, model=source_name, version=tms_meta['version'])
+
+            if source_id is None:
+                add_source(pool=pool, model=source_name, version=tms_meta['version'])
+                source_id = get_source_id(pool=pool, model=source_name, version=tms_meta['version'])
+
+        except Exception:
+            msg = "Exception occurred while loading source meta data for WRF_{} from database.".format(wrf_system)
+            logger.error(msg)
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+            sys.exit(msg)
 
         tms_meta['model'] = source_name
         tms_meta['source_id'] = source_id
 
-        try:
-            read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
-
-        except Exception as e:
-            logger.error("WRF_{} netcdf file reading error.".format(wrf_model))
-            traceback.print_exc()
+        read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
     """
     Config.json 
     {
-      "wrf_dir": "/mnt/disks/wrf-mod",
+      "wrf_dir": "/wrf_nfs/wrf",
+      "gfs_data_hour": "18",
+
+      "version": "4.0",
       "model": "WRF",
-      "version": "v3",
-      "wrf_model_list": "A,C,E,SE",
-    
-      "start_date": ["2019-04-18","2019-04-17"],
-    
+      "wrf_systems": "A,C,E,SE",
+
+      "run_date": ["2019-04-18","2019-04-17"],
+
       "sim_tag": "evening_18hrs",
-    
+
       "unit": "mm",
       "unit_type": "Accumulative",
       "variable": "Precipitation",
-      
+
       "rfield_host": "104.198.0.87",
       "rfield_user": "uwcc-admin",
       "rfield_key": "/home/uwcc-admin/.ssh/uwcc-admin"
     }
 
-
-    run_date_str :  2019-03-23
-    daily_dir :  STATIONS_2019-03-23
-    output_dir :  /mnt/disks/wrf-mod/STATIONS_2019-03-23
-    rainnc_net_cdf_file :  d03_RAINNC_2019-03-23_A.nc
-    rainnc_net_cdf_file_path :  /mnt/disks/wrf-mod/STATIONS_2019-03-23/d03_RAINNC_2019-03-23_A.nc    
+    /wrf_nfs/wrf/4.0/18/A/2019-07-30/d03_RAINNC.nc
 
     tms_meta = {
                     'sim_tag'       : sim_tag,
@@ -325,8 +347,9 @@ if __name__=="__main__":
         wrf_dir = read_attribute_from_config_file('wrf_dir', config)
         model = read_attribute_from_config_file('model', config)
         version = read_attribute_from_config_file('version', config)
-        wrf_model_list = read_attribute_from_config_file('wrf_model_list', config)
-        wrf_model_list = wrf_model_list.split(',')
+        gfs_data_hour = read_attribute_from_config_file('gfs_data_hour', config)
+        wrf_systems = read_attribute_from_config_file('wrf_systems', config)
+        wrf_systems_list = wrf_systems.split(',')
 
         # sim_tag
         sim_tag = read_attribute_from_config_file('sim_tag', config)
@@ -345,61 +368,80 @@ if __name__=="__main__":
 
         dates = []
 
-        if 'start_date' in config and (config['start_date']!=""):
-            dates = config['start_date']
+        if 'run_date' in config and (config['run_date'] != ""):
+            dates = config['run_date']
         else:
-            dates.append((datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'))
+            dates.append((datetime.now() + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d'))
 
         pool = get_Pool(host=CURW_FCST_HOST, port=CURW_FCST_PORT, user=CURW_FCST_USERNAME, password=CURW_FCST_PASSWORD,
-                db=CURW_FCST_DATABASE)
+                        db=CURW_FCST_DATABASE)
 
-        wrf_v3_stations = get_wrf_stations(pool)
+        try:
+            wrf_v3_stations = get_wrf_stations(pool)
 
-        variable_id = get_variable_id(pool=pool, variable=variable)
-        unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
+            variable_id = get_variable_id(pool=pool, variable=variable)
+            unit_id = get_unit_id(pool=pool, unit=unit, unit_type=unit_type)
+        except Exception:
+            msg = "Exception occurred while loading common metadata from database."
+            logger.error(msg)
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+            sys.exit(1)
 
         tms_meta = {
-                'sim_tag'    : sim_tag,
-                'version'    : version,
-                'variable'   : variable,
-                'unit'       : unit,
-                'unit_type'  : unit_type.value,
-                'variable_id': variable_id,
-                'unit_id'    : unit_id
-                }
+            'sim_tag': sim_tag,
+            'version': version,
+            'variable': variable,
+            'unit': unit,
+            'unit_type': unit_type.value,
+            'variable_id': variable_id,
+            'unit_id': unit_id
+        }
 
         config_data = {
-                'model'      : model,
-                'version'    : version,
-                'dates'      : dates,
-                'wrf_dir'    : wrf_dir
-                }
+            'model': model,
+            'version': version,
+            'dates': dates,
+            'wrf_dir': wrf_dir,
+            'gfs_data_hour': gfs_data_hour
+        }
 
         mp_pool = mp.Pool(mp.cpu_count())
 
-        results = mp_pool.starmap_async(extract_wrf_data, [(wrf_model, config_data, tms_meta) for wrf_model in wrf_model_list]).get()
+        # wrf_results = mp_pool.starmap_async(extract_wrf_data,
+        #                                 [(wrf_system, config_data, tms_meta) for wrf_system in wrf_systems_list]).get()
 
-        print("results: ", results)
+        wrf_results = mp_pool.starmap(extract_wrf_data,
+                                            [(wrf_system, config_data, tms_meta) for wrf_system in
+                                             wrf_systems_list])
+
+        print("wrf extraction results: ", wrf_results)
 
         source_list = ""
 
-        for wrf_system in wrf_model_list:
+        for wrf_system in wrf_systems_list:
             source_list += "WRF_{},".format(wrf_system)
 
         source_list = source_list[:-1]
 
-        kelani_basin_rfield_status = gen_kelani_basin_rfields(source_names=source_list, version=version,
-                                                              sim_tag=sim_tag,
-                                                              rfield_host=rfield_host, rfield_key=rfield_key,
-                                                              rfield_user=rfield_user)
+        kelani_basin_rfield_status = gen_kelani_basin_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
+                                                rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
+
+        if not kelani_basin_rfield_status:
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "Kelani basin rfiled generation for {} failed".format(source_list)
 
         d03_rfield_status = gen_all_d03_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
                                                 rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
 
+        if not d03_rfield_status:
+            email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "SL d03 rfiled generation for {} failed".format(source_list)
+
     except Exception as e:
-        logger.error('Config data or meta data loading error.')
+        msg = 'Multiprocessing error.'
+        logger.error(msg)
+        email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
         traceback.print_exc()
     finally:
-        logger.info("Process finished.")
         mp_pool.close()
         destroy_Pool(pool)
+        logger.info("Process finished.")
+        logger.info("Email Content {}".format(json.dumps(email_content)))
