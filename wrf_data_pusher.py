@@ -37,6 +37,7 @@ def read_attribute_from_config_file(attribute, config):
     :param config: loaded json file
     :return:
     """
+
     if attribute in config and (config[attribute]!=""):
         return config[attribute]
     else:
@@ -78,6 +79,7 @@ def run_remote_command(host, user, key, command):
     """
     :return:  True if successful, False otherwise
     """
+
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -104,8 +106,8 @@ def gen_kelani_basin_rfields(source_names, version, sim_tag, rfield_host, rfield
     :param rfield_user:
     :return: True if successful, False otherwise
     """
-    rfield_command_kelani_basin = "nohup ./rfield_extractor/gen_kelani_basin_rfield.py -m {} -v {} -s {} " \
-                                  "2>&1 ./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+    rfield_command_kelani_basin = "nohup ./curw_rfield_extractor/gen_kelani_basin_rfield.py -m {} -v {} -s {} " \
+                                  "2>&1 ./curw_rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} kelani basin rfield files.".format(source_names))
     return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
@@ -123,12 +125,49 @@ def gen_all_d03_rfields(source_names, version, sim_tag, rfield_host, rfield_key,
        :param rfield_user:
        :return:  True if successful, False otherwise
     """
-    rfield_command_d03 = "nohup  ./rfield_extractor/gen_SL_d03_rfield.py -m {} -v {} -s {} 2>&1 " \
-                         "./rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+    rfield_command_d03 = "nohup  ./curw_rfield_extractor/gen_SL_d03_rfield.py -m {} -v {} -s {} 2>&1 " \
+                         "./curw_rfield_extractor/rfield.log".format(source_names, version, sim_tag)
 
     logger.info("Generate {} d03 rfield files.".format(source_names))
     return run_remote_command(host=rfield_host, key=rfield_key, user=rfield_user,
                      command=rfield_command_d03)
+
+
+def gen_kelani_basin_rfields_locally(source_names, version, sim_tag):
+    """
+    Generate kelani basin rfields
+    :param source_names: e.g.: WRF_A,WRF_C
+    :param version: e.g.: v4.0
+    :param sim_tag: e.g.: "evening_18hrs"
+    :return: True if successful, False otherwise
+    """
+    rfield_command_kelani_basin = "nohup /home/uwcc-admin/curw_rfield_extractor/gen_kelani_basin_rfield.py -m {} -v {} -s {} " \
+                                  "2>&1 /home/uwcc-admin/curw_rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+
+    logger.info("Generate {} kelani basin rfield files.".format(source_names))
+
+    output = os.system(rfield_command_kelani_basin)
+    if output is not 0:
+        return False
+    return True
+
+
+def gen_all_d03_rfields_locally(source_names, version, sim_tag):
+    """
+       Generate d03 rfields for SL extent
+       :param source_names: e.g.: WRF_A,WRF_C
+       :param version: e.g.: v4.0
+       :param sim_tag: e.g.: "evening_18hrs"
+       :return:  True if successful, False otherwise
+    """
+    rfield_command_d03 = "nohup  /home/uwcc-admin/curw_rfield_extractor/gen_SL_d03_rfield.py -m {} -v {} -s {} 2>&1 " \
+                         "/home/uwcc-admin/curw_rfield_extractor/rfield.log".format(source_names, version, sim_tag)
+
+    logger.info("Generate {} d03 rfield files.".format(source_names))
+    output = os.system(rfield_command_d03)
+    if output is not 0:
+        return False
+    return True
 
 
 def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
@@ -142,11 +181,13 @@ def push_rainfall_to_db(ts, ts_data, tms_id, fgt):
     try:
         ts.insert_formatted_data(ts_data, True)  # upsert True
         ts.update_latest_fgt(id_=tms_id, fgt=fgt)
+        return True
     except Exception:
         msg = "Inserting the timseseries for tms_id {} and fgt {} failed.".format(ts_data[0][0], ts_data[0][2])
         logger.error(msg)
         traceback.print_exc()
         email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
+        return False
 
 
 def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
@@ -164,12 +205,11 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
     lat_unit_info:  degree_north
     time_unit_info:  minutes since 2019-04-02T18:00:00
     """
-
     if not os.path.exists(rainnc_net_cdf_file_path):
         msg = 'no rainnc netcdf :: {}'.format(rainnc_net_cdf_file_path)
         logger.warning(msg)
         email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
-        sys.exit(msg)
+        return False
     else:
 
         try:
@@ -266,7 +306,7 @@ def read_netcdf_file(pool, rainnc_net_cdf_file_path, tms_meta):
             logger.error(msg)
             traceback.print_exc()
             email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
-            sys.exit(msg)
+            return False
 
 
 def extract_wrf_data(wrf_system, config_data, tms_meta):
@@ -294,12 +334,12 @@ def extract_wrf_data(wrf_system, config_data, tms_meta):
             msg = "Exception occurred while loading source meta data for WRF_{} from database.".format(wrf_system)
             logger.error(msg)
             email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = msg
-            sys.exit(msg)
+            return False
 
         tms_meta['model'] = source_name
         tms_meta['source_id'] = source_id
 
-        read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
+        return read_netcdf_file(pool=pool, rainnc_net_cdf_file_path=rainnc_net_cdf_file_path, tms_meta=tms_meta)
 
 
 if __name__ == "__main__":
@@ -362,9 +402,9 @@ if __name__ == "__main__":
         variable = read_attribute_from_config_file('variable', config)
 
         # rfield params
-        rfield_host = read_attribute_from_config_file('rfield_host', config)
-        rfield_user = read_attribute_from_config_file('rfield_user', config)
-        rfield_key = read_attribute_from_config_file('rfield_key', config)
+        # rfield_host = read_attribute_from_config_file('rfield_host', config)
+        # rfield_user = read_attribute_from_config_file('rfield_user', config)
+        # rfield_key = read_attribute_from_config_file('rfield_key', config)
 
         dates = []
 
@@ -423,14 +463,19 @@ if __name__ == "__main__":
 
         source_list = source_list[:-1]
 
-        kelani_basin_rfield_status = gen_kelani_basin_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
-                                                rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
+        # kelani_basin_rfield_status = gen_kelani_basin_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
+        #                                         rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
+
+        kelani_basin_rfield_status = gen_kelani_basin_rfields_locally(source_names=source_list, version=version,
+                                                              sim_tag=sim_tag)
 
         if not kelani_basin_rfield_status:
             email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "Kelani basin rfiled generation for {} failed".format(source_list)
 
-        d03_rfield_status = gen_all_d03_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
-                                                rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
+        # d03_rfield_status = gen_all_d03_rfields(source_names=source_list, version=version, sim_tag=sim_tag,
+        #                                         rfield_host=rfield_host, rfield_key=rfield_key, rfield_user=rfield_user)
+
+        d03_rfield_status = gen_all_d03_rfields_locally(source_names=source_list, version=version, sim_tag=sim_tag)
 
         if not d03_rfield_status:
             email_content[datetime.now().strftime(COMMON_DATE_TIME_FORMAT)] = "SL d03 rfiled generation for {} failed".format(source_list)
