@@ -4,7 +4,7 @@
 echo `date`
 
 echo "Changing into ~/wrf_data_pusher"
-cd /home/uwcc-admin/wrf_data_pusher
+cd /home/uwcc-admin/curw_wrf_data_pusher
 echo "Inside `pwd`"
 
 
