@@ -362,9 +362,9 @@ if __name__ == "__main__":
       "unit_type": "Accumulative",
       "variable": "Precipitation",
 
-      "rfield_host": "104.198.0.87",
-      "rfield_user": "uwcc-admin",
-      "rfield_key": "/home/uwcc-admin/.ssh/uwcc-admin"
+      "rfield_host": "233.646.456.78",
+      "rfield_user": "blah",
+      "rfield_key": "/home/uwcc-admin/.ssh/blah"
     }
 
     /wrf_nfs/wrf/4.0/18/A/2019-07-30/d03_RAINNC.nc
